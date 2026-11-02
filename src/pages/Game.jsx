@@ -200,7 +200,7 @@ export function ModeCard({ mode, selected, onClick, disabled }) {
       <p className="m-0 mt-2 text-[13px] font-semibold leading-snug text-white/55">
         {isBlitz
           ? 'Cel mai rapid răspuns corect ia 2 landuri, al doilea 1. Apoi bătălii; capitala (3 turnuri) se atacă doar din vecinătate — un turn zdrobit îți dă o nouă întrebare în același tur.'
-          : 'Alegi landul de start, apoi în fiecare rundă alegi în secret o țintă. Corect = o primești (timpul nu contează). Landurile rămase libere se dispută la Stichfrage — cel mai rapid câștigă.'}
+          : 'Pe rând, fiecare alege un land liber (apoi doar vecine cu ale lui). Toți răspund: corect = primești landul, greșit = rămâne liber. Primul land e capitala ta. După ce harta e împărțită începe războiul între jucători.'}
       </p>
     </motion.button>
   );
@@ -535,7 +535,7 @@ export default function Game({ gameId, user, profile, refresh }) {
           {state.battle.assault > 0 && <div className="mt-1 text-xs font-black uppercase tracking-widest text-[#ff7a6e]">Asalt continuu #{state.battle.assault + 1}</div>}
         </>
       ) : pp === 'conq-q' ? (
-        <>Toți răspund la aceeași întrebare{myTarget ? <> · ținta ta: <b className="text-[#f5c443]">{REGIONS[myTarget].short}</b></> : ''}</>
+        <>Răspuns corect = primești landul ales{myTarget ? <> · al tău: <b className="text-[#f5c443]">{REGIONS[myTarget].short}</b></> : ''}</>
       ) : pp === 'tie-q' ? (
         <><b className="text-[#ff7a6e]">⚡ Stichfrage</b> — cel mai rapid ia un land</>
       ) : (
@@ -567,8 +567,8 @@ export default function Game({ gameId, user, profile, refresh }) {
         </span>
       ) : ph === 'conq-q' ? (
         <span>
-          {myTarget ? <>Ținta ta: <b className="text-[#f5c443]">{REGIONS[myTarget].short}</b> · </> : null}
-          <span className="text-white/55">precizia contează, nu viteza</span>
+          {myTarget ? <>Landul tău: <b className="text-[#f5c443]">{REGIONS[myTarget].short}</b> · </> : null}
+          <span className="text-white/55">timpul nu contează</span>
         </span>
       ) : ph === 'tie-q' ? (
         <span>
@@ -663,24 +663,31 @@ export default function Game({ gameId, user, profile, refresh }) {
       </div>
     );
   } else if (ph === 'conq-target') {
-    const chosen = state.players.map((_, k) => state.conq.targets[k] !== undefined);
+    const who = acting[0];
+    const mine = who === me;
     panel = (
       <div>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-[11px] font-black uppercase tracking-widest text-[#f5c443]">Runda {state.conq.round}/{state.conq.maxRounds}</div>
-            <b>{myTarget ? `Ținta ta: ${REGIONS[myTarget].short} 🤫` : acting.includes(me) ? 'Alege în secret landul pe care îl ataci' : 'Așteaptă…'}</b>
+            <div className="text-[11px] font-black uppercase tracking-widest text-[#f5c443]">Împărțirea · runda {state.conq.round}</div>
+            <b className={mine ? 'text-[#f5c443]' : ''}>
+              {mine ? (landCount(state, me) ? 'Alege un land liber, vecin cu al tău' : 'Alege primul tău land (va fi capitala)') : <><Dot i={who} /> {nm(who)} alege un land…</>}
+            </b>
           </div>
           <Timer left={left} total={total} />
         </div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {state.players.map((p, k) => (
-            <span key={k} className={'rounded-lg px-2 py-1 text-xs font-extrabold ' + (chosen[k] ? 'bg-[#3ccf7a]/15 text-[#9ff3c1]' : 'bg-white/5 text-white/45')}>
-              {p.name} {chosen[k] ? '✓ a ales' : '…'}
-            </span>
-          ))}
+        <div className="mt-2 grid gap-1">
+          {state.conq.order.map((k, idx) => {
+            const t = state.conq.targets[k];
+            return (
+              <div key={k} className={'flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-bold ' + (idx === state.conq.turn ? 'bg-[#f5c443]/10' : '')}>
+                <span className="w-4 text-white/35">{idx + 1}.</span> <Dot i={k} /> {nm(k)}
+                <span className="ml-auto text-white/60">{t ? REGIONS[t].short : t === null ? 'nu are vecini liberi' : idx === state.conq.turn ? 'alege…' : '—'}</span>
+              </div>
+            );
+          })}
         </div>
-        <p className="m-0 mt-2 text-xs font-bold text-white/45">Poți ținti un land liber sau unul inamic vecin (inclusiv o capitală vecină). Ce aleg ceilalți se vede abia după răspuns.</p>
+        <p className="m-0 mt-2 text-xs font-bold text-white/45">Nu se pot alege landurile altora și nici același land de două ori. Apoi toți răspund la o întrebare.</p>
       </div>
     );
   } else if (ph === 'expand-pick' || ph === 'start-pick' || ph === 'tie-pick' || ph === 'battle-select') {
@@ -694,7 +701,7 @@ export default function Game({ gameId, user, profile, refresh }) {
         <div>
           {ph === 'battle-select' && (
             <div className="text-[11px] font-black uppercase tracking-widest text-[#ff7a6e]">
-              Bătălia {state.battle.turn + 1}/{state.battle.order.length}
+              {state.mode === 'conquest' ? 'Război · ' : ''}Bătălia {state.battle.turn + 1}/{state.battle.order.length}
             </div>
           )}
           <b className={mine ? 'text-[#f5c443]' : ''}>{mine ? myVerb : <><Dot i={who} /> {nm(who)} {verb}…</>}</b>
@@ -742,7 +749,7 @@ export default function Game({ gameId, user, profile, refresh }) {
   }
 
   const target = state.battle?.target && (ph === 'battle-q' || ph === 'battle-result') ? state.battle.target : null;
-  const reveal = ph === 'conq-result' ? state.conq.targets : null;
+  const reveal = state.conq && ['conq-target', 'ready', 'conq-q', 'conq-result'].includes(ph) && (ph !== 'ready' || state.pending?.phase === 'conq-q') ? state.conq.targets : null;
 
   const panelEl = panel && (
     <AnimatePresence mode="wait">
@@ -771,7 +778,7 @@ export default function Game({ gameId, user, profile, refresh }) {
         </div>
         {panelOnTop && panelEl}
         <div className="mt-2">
-          <GermanyMap state={state} selectable={selectable} onSelect={(rid) => moveType && send({ type: moveType, region: rid })} target={target} myTarget={ph === 'conq-target' || ph === 'conq-q' ? myTarget : null} revealTargets={reveal} />
+          <GermanyMap state={state} selectable={selectable} onSelect={(rid) => moveType && send({ type: moveType, region: rid })} target={target} myTarget={['conq-target', 'conq-q', 'ready'].includes(ph) && state.conq ? myTarget : null} revealTargets={reveal} />
         </div>
         {!panelOnTop && panelEl}
         {state.log.length > 0 && (

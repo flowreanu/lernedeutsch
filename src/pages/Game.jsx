@@ -20,7 +20,7 @@ import {
 import { REGIONS } from '../game/map.js';
 import GermanyMap from '../game/GermanyMap.jsx';
 import { go } from '../lib/nav.js';
-import { confetti, sfx } from '../lib/fx.js';
+import { confetti, musicOn, setMusic, setSound, sfx, soundOn, startMusic, stopMusic } from '../lib/fx.js';
 
 function useNow(active) {
   const [, set] = useState(0);
@@ -113,6 +113,7 @@ function Banner({ banner }) {
     if (!banner || seq === last.current) return;
     last.current = seq;
     setShow(banner);
+    sfx.banner();
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setShow(null), 2300);
   }, [seq]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -141,6 +142,40 @@ function Banner({ banner }) {
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+function AudioToggles() {
+  const [fx, setFx] = useState(soundOn());
+  const [mu, setMu] = useState(musicOn());
+  const btn = 'grid h-10 w-10 place-items-center rounded-xl border text-lg transition';
+  return (
+    <div className="flex gap-1.5">
+      <motion.button
+        {...tap}
+        title={fx ? 'Oprește efectele sonore' : 'Pornește efectele sonore'}
+        onClick={() => { setSound(!fx); setFx(!fx); if (!fx) setTimeout(sfx.tap, 30); }}
+        className={btn + (fx ? ' border-[#f5c443]/50 bg-[#f5c443]/15' : ' border-white/10 bg-white/5 opacity-60')}
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke={fx ? '#f5c443' : '#9aa0ad'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 9v6h4l5 4V5L8 9H4z" fill={fx ? 'rgba(245,196,67,.25)' : 'none'} />
+          {fx ? <path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" /> : <path d="M17 9l5 6M22 9l-5 6" />}
+        </svg>
+      </motion.button>
+      <motion.button
+        {...tap}
+        title={mu ? 'Oprește muzica' : 'Pornește muzica'}
+        onClick={() => { setMusic(!mu); setMu(!mu); }}
+        className={btn + (mu ? ' border-[#ef4b3f]/50 bg-[#ef4b3f]/15' : ' border-white/10 bg-white/5 opacity-60')}
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke={mu ? '#ff7a6e' : '#9aa0ad'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 18V6l11-2v12" />
+          <circle cx="6.5" cy="18" r="2.5" fill={mu ? 'rgba(239,75,63,.35)' : 'none'} />
+          <circle cx="17.5" cy="16" r="2.5" fill={mu ? 'rgba(239,75,63,.35)' : 'none'} />
+          {!mu && <path d="M3 3l18 18" />}
+        </svg>
+      </motion.button>
+    </div>
   );
 }
 
@@ -312,13 +347,57 @@ export default function Game({ gameId, user, profile, refresh }) {
       state.result.answers[i].c === state.result.correctAnswer ? sfx.correct() : sfx.wrong();
     }
     if (state.status === 'finished' && i >= 0) {
-      sfx.finish();
-      if (state.scores[i] === Math.max(...state.scores)) confetti(3500);
+      if (state.scores[i] === Math.max(...state.scores)) {
+        sfx.fanfare();
+        confetti(3500);
+      } else sfx.finish();
     }
+  }, [state, user.id]);
+
+  // muzica jocului
+  useEffect(() => {
+    startMusic();
+    return () => stopMusic();
+  }, []);
+
+  // sunete pentru evenimente pe hartă (cucerire, turn zdrobit, apărare)
+  const seenEv = useRef(null);
+  useEffect(() => {
+    const evs = state?.events || [];
+    if (seenEv.current === null) {
+      seenEv.current = new Set(evs.map((e) => e.id));
+      return;
+    }
+    const fresh = evs.filter((e) => !seenEv.current.has(e.id));
+    fresh.forEach((e) => seenEv.current.add(e.id));
+    if (fresh.some((e) => e.type === 'crush')) sfx.boom();
+    else if (fresh.some((e) => e.type === 'capture')) sfx.capture();
+    else if (fresh.some((e) => e.type === 'defend')) sfx.defend();
+  }, [state?.events]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // e rândul tău / apare întrebarea
+  const lastTurn = useRef(null);
+  useEffect(() => {
+    if (!state || state.status !== 'playing') return;
+    const key = state.timer.seq;
+    if (lastTurn.current === key) return;
+    lastTurn.current = key;
+    const i = playerIndex(state, user.id);
+    if (state.q && answerers(state).includes(i)) sfx.go();
+    else if (state.q) sfx.whoosh();
+    else if (actors(state).includes(i)) sfx.turn();
   }, [state, user.id]);
 
   const playing = state?.status === 'playing';
   const now = useNow(playing);
+
+  // tic-tac în numărătoarea 3-2-1
+  const lastCount = useRef(null);
+  const countNow = state?.phase === 'ready' ? Math.ceil(Math.max(0, (localTimer.current.deadline - now) / 1000)) : null;
+  useEffect(() => {
+    if (countNow && countNow !== lastCount.current && countNow <= 3) sfx.tick();
+    lastCount.current = countNow;
+  }, [countNow]);
 
   if (err)
     return (
@@ -445,6 +524,39 @@ export default function Game({ gameId, user, profile, refresh }) {
         )}
       </div>
     );
+  } else if (ph === 'ready' && state.pending) {
+    panelOnTop = true;
+    const pp = state.pending.phase;
+    const n = Math.max(1, Math.ceil(left - 0.6));
+    const what =
+      pp === 'battle-q' ? (
+        <>
+          <Dot i={state.battle.attacker} /> <b>{nm(state.battle.attacker)}</b> atacă {state.castle?.[state.battle.target] ? '🏰 capitala lui' : REGIONS[state.battle.target].short + ' ·'} <Dot i={state.battle.defender} /> <b>{nm(state.battle.defender)}</b>
+          {state.battle.assault > 0 && <div className="mt-1 text-xs font-black uppercase tracking-widest text-[#ff7a6e]">Asalt continuu #{state.battle.assault + 1}</div>}
+        </>
+      ) : pp === 'conq-q' ? (
+        <>Toți răspund la aceeași întrebare{myTarget ? <> · ținta ta: <b className="text-[#f5c443]">{REGIONS[myTarget].short}</b></> : ''}</>
+      ) : pp === 'tie-q' ? (
+        <><b className="text-[#ff7a6e]">⚡ Stichfrage</b> — cel mai rapid ia un land</>
+      ) : (
+        <>Întrebare pentru toți · 🥇 2 landuri · 🥈 1 land</>
+      );
+    const involvedMe = pp === 'battle-q' ? [state.battle.attacker, state.battle.defender].includes(me) : pp === 'conq-q' ? !!myTarget : true;
+    panel = (
+      <div className="py-2 text-center">
+        <div className="text-[11px] font-black uppercase tracking-[.25em] text-white/45">{involvedMe ? 'Pregătește-te!' : 'Urmărește duelul'}</div>
+        <div className="relative mx-auto my-2 grid h-28 w-28 place-items-center">
+          <motion.span className="absolute inset-0 rounded-full border-4 border-[#f5c443]/30" animate={{ scale: [1, 1.25], opacity: [0.8, 0] }} transition={{ repeat: Infinity, duration: 1 }} />
+          <span className="absolute inset-2 rounded-full bg-[radial-gradient(circle_at_35%_30%,#ffe08a,#f5c443_45%,#b9850a)] shadow-gold" />
+          <AnimatePresence mode="popLayout">
+            <motion.span key={n} initial={{ scale: 2.2, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.3, opacity: 0 }} transition={{ type: 'spring', stiffness: 400, damping: 20 }} className="relative text-5xl font-black text-[#2a1d00]">
+              {n}
+            </motion.span>
+          </AnimatePresence>
+        </div>
+        <div className="text-sm font-bold text-white/80">{what}</div>
+      </div>
+    );
   } else if (state.q && (ph === 'expand-q' || ph === 'battle-q' || ph === 'conq-q' || ph === 'tie-q')) {
     panelOnTop = true;
     const head =
@@ -531,6 +643,10 @@ export default function Game({ gameId, user, profile, refresh }) {
             Răspuns corect: <b className="text-[#3ccf7a]">{state.q.options[r.correctAnswer]}</b>
           </p>
         )}
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+          <motion.div key={state.timer.seq} className="h-full rounded-full bg-gradient-to-r from-[#ef4b3f] to-[#f5c443]" initial={{ width: '100%' }} animate={{ width: '0%' }} transition={{ duration: total, ease: 'linear' }} />
+        </div>
+        <p className="m-0 mt-1 text-center text-[11px] font-bold text-white/40">Continuăm în {Math.ceil(left)}s…</p>
         <div className="mt-2 grid gap-1">
           {involved.map((k) => {
             const a = r.answers?.[k];
@@ -643,13 +759,11 @@ export default function Game({ gameId, user, profile, refresh }) {
         <div className="flex items-center justify-between">
           <motion.button {...tap} onClick={() => go('joc')} className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 text-lg">‹</motion.button>
           <div className="brand">Lerne<span>Deutsch</span></div>
-          <span className="rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider text-white/70">
-            {state.mode === 'conquest' ? '🗺️' : '⚡'} {mode.de}
-          </span>
+          <AudioToggles />
         </div>
         <div className="mt-2 flex justify-center">
           <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[.2em] text-white/60">
-            {state.players.length} jucători · {mode.ro}
+            {state.mode === 'conquest' ? '🗺️' : '⚡'} {mode.de} · {state.players.length} jucători
           </span>
         </div>
         <div className="mt-3">

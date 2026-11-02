@@ -180,6 +180,47 @@ function makeSupabase() {
     async recordResult(game_id) {
       must(await sb.rpc('record_game_result', { p_game: game_id }));
     },
+    // ---- chat
+    async listMessages(limit = 80) {
+      const rows = must(
+        await sb.from('chat_messages').select('id,user_id,body,created_at,profiles(display_name,role)').order('created_at', { ascending: false }).limit(limit)
+      );
+      return rows.reverse().map((r) => ({ ...r, name: r.profiles?.display_name, role: r.profiles?.role }));
+    },
+    async sendMessage(body) {
+      const user_id = await uid();
+      must(await sb.from('chat_messages').insert({ user_id, body }));
+    },
+    async deleteMessage(id) {
+      must(await sb.from('chat_messages').delete().eq('id', id));
+    },
+    subscribeChat({ onInsert, onDelete }) {
+      const ch = sb
+        .channel('chat-global')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (p) => onInsert?.(p.new))
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat_messages' }, (p) => onDelete?.(p.old))
+        .subscribe();
+      return () => sb.removeChannel(ch);
+    },
+    // ---- moderare
+    async listUsers() {
+      return must(await sb.from('profiles').select('id,display_name,role,muted_until,banned,xp,last_active').order('display_name'));
+    },
+    async getUser(id) {
+      return must(await sb.from('profiles').select('id,display_name,role,muted_until,banned').eq('id', id).maybeSingle());
+    },
+    async mute(userId, minutes) {
+      return must(await sb.rpc('mod_mute', { p_user: userId, p_minutes: minutes }));
+    },
+    async unmute(userId) {
+      must(await sb.rpc('mod_unmute', { p_user: userId }));
+    },
+    async ban(userId, banned) {
+      must(await sb.rpc('admin_ban', { p_user: userId, p_ban: banned }));
+    },
+    async setRole(userId, role) {
+      must(await sb.rpc('admin_set_role', { p_user: userId, p_role: role }));
+    },
   };
 }
 
@@ -203,6 +244,9 @@ function makeDemo() {
   const emit = () => listeners.forEach((f) => f(get('user', null)));
   const games = {};
   const gameSubs = {};
+  let chatSubs = [];
+  const mods = () => get('mods', {});
+  const setMod = (id, patch) => set('mods', { ...mods(), [id]: { ...(mods()[id] || {}), ...patch } });
   let moveId = 0;
 
   const FAKE = [
@@ -240,7 +284,7 @@ function makeDemo() {
       },
     },
     async getProfile() {
-      return get('profile', { id: 'me', display_name: 'Eu', xp: 0, streak: 0, game_points: 0, games_played: 0, games_won: 0 });
+      return { role: 'admin', ...get('profile', { id: 'me', display_name: 'Eu', xp: 0, streak: 0, game_points: 0, games_played: 0, games_won: 0 }) };
     },
     async updateProfile(patch) {
       const p = { ...(await this.getProfile()), ...patch };
@@ -312,6 +356,65 @@ function makeDemo() {
     subscribeGame(id, handlers) {
       gameSubs[id] = [...(gameSubs[id] || []), handlers];
       return () => (gameSubs[id] = gameSubs[id].filter((h) => h !== handlers));
+    },
+    // ---- chat (demo: local, cu răspunsuri automate de la colegii de exemplu)
+    async listMessages() {
+      const seed = [
+        { id: 1, user_id: 'f1', body: 'Hallo zusammen! 👋', created_at: new Date(Date.now() - 3600e3).toISOString() },
+        { id: 2, user_id: 'f2', body: 'Guten Morgen! Cine face lecția 3 azi?', created_at: new Date(Date.now() - 3000e3).toISOString() },
+        { id: 3, user_id: 'f3', body: 'Eu! Zahlen sind schwer 😅', created_at: new Date(Date.now() - 2400e3).toISOString() },
+      ];
+      const users = await this.listUsers();
+      const byId = Object.fromEntries(users.map((u) => [u.id, u]));
+      return get('chat', seed).map((m) => ({ ...m, name: byId[m.user_id]?.display_name, role: byId[m.user_id]?.role }));
+    },
+    async sendMessage(body) {
+      const me = await this.getProfile();
+      if (me.muted_until && new Date(me.muted_until) > new Date()) throw new Error('Ai mute.');
+      const msgs = get('chat', null) || (await this.listMessages()).map(({ name, role, ...m }) => m);
+      const m = { id: Date.now(), user_id: 'me', body, created_at: new Date().toISOString() };
+      set('chat', [...msgs, m].slice(-100));
+      chatSubs.forEach((h) => setTimeout(() => h.onInsert?.(m), 0));
+      // un coleg de exemplu răspunde
+      const replies = ['Super! 👍', 'Sehr gut!', 'Hahaha 😂', 'Wir sehen uns im Spiel!', 'Danke!', 'Ja, genau!', 'Los geht’s! ⚔️'];
+      const who = ['f1', 'f2', 'f3'][Math.floor(Math.random() * 3)];
+      const u = mods()[who] || {};
+      if (!u.banned && !(u.muted_until && new Date(u.muted_until) > new Date()))
+        setTimeout(() => {
+          const r = { id: Date.now() + 1, user_id: who, body: replies[Math.floor(Math.random() * replies.length)], created_at: new Date().toISOString() };
+          set('chat', [...get('chat', []), r].slice(-100));
+          chatSubs.forEach((h) => h.onInsert?.(r));
+        }, 1800 + Math.random() * 2500);
+    },
+    async deleteMessage(id) {
+      set('chat', get('chat', []).filter((m) => m.id !== id));
+      chatSubs.forEach((h) => h.onDelete?.({ id }));
+    },
+    subscribeChat(h) {
+      chatSubs.push(h);
+      return () => (chatSubs = chatSubs.filter((x) => x !== h));
+    },
+    async listUsers() {
+      const me = await this.getProfile();
+      const m = mods();
+      return [...FAKE.map((f) => ({ role: 'user', muted_until: null, banned: false, ...f, ...(m[f.id] || {}) })), me];
+    },
+    async getUser(id) {
+      return (await this.listUsers()).find((u) => u.id === id) || null;
+    },
+    async mute(userId, minutes) {
+      const until = new Date(Date.now() + minutes * 60000).toISOString();
+      setMod(userId, { muted_until: until });
+      return until;
+    },
+    async unmute(userId) {
+      setMod(userId, { muted_until: null });
+    },
+    async ban(userId, banned) {
+      setMod(userId, banned ? { banned, role: 'user' } : { banned });
+    },
+    async setRole(userId, role) {
+      setMod(userId, { role });
     },
     async recordResult(id) {
       const st = games[id]?.state;

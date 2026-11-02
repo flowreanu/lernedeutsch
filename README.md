@@ -25,6 +25,12 @@ Costuri: **0 €** (planurile gratuite Supabase + Vercel ajung pentru zeci/sute 
 > - simplu: **Authentication → Sign In / Providers → Email** → dezactivează **Confirm email** (contul merge imediat);
 > - sau: **Authentication → Emails → SMTP Settings** și pui un SMTP propriu (ex. Brevo, gratuit 300 e-mailuri/zi).
 
+### Pasul 1b — Chat și moderare (o singură dată)
+
+**SQL Editor** → *New query* → lipește conținutul fișierului `supabase/update-2-chat-admin.sql` → **Run**.
+Contul cu adresa **andreitufaru@proton.me** devine automat **admin** (și dacă îl creezi abia după).
+Adminul poate da mute (5/15/30 min), bana și numi moderatori; moderatorii pot da doar mute.
+
 ## Pasul 2 — Publicarea online (Vercel), ~10 minute
 
 1. Pune folderul proiectului pe **GitHub** (repo nou → *uploading an existing file* → tragi toate fișierele, **fără** `node_modules`).

@@ -10,6 +10,7 @@ import Colleagues from './pages/Colleagues.jsx';
 import GameLobby from './pages/GameLobby.jsx';
 import Game from './pages/Game.jsx';
 import Profile from './pages/Profile.jsx';
+import Chat from './pages/Chat.jsx';
 
 function useHashRoute() {
   const parse = () => {
@@ -33,12 +34,14 @@ const ICONS = {
   joc: 'M7 9h2m-1-1v2m7 0h.01M17 8h.01M6 5h12a4 4 0 0 1 4 4v5a4 4 0 0 1-7 2.6L14 15h-4l-1 1.6A4 4 0 0 1 2 14V9a4 4 0 0 1 4-4z',
   home: 'M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
   repeat: 'M4 12a8 8 0 0 1 13.7-5.6L20 9M20 4v5h-5M20 12a8 8 0 0 1-13.7 5.6L4 15m0 5v-5h5',
+  chat: 'M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5zM8 8.5h8M8 11.5h5',
   people: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm8 0a3 3 0 1 0 0-6M2 21v-1a6 6 0 0 1 12 0v1m3-7a5 5 0 0 1 5 5v2',
   user: 'M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm-8 10a8 8 0 0 1 16 0',
 };
 const NAV = [
   { key: 'joc', label: 'Joc', icon: 'joc' },
   { key: '', label: 'Acasă', icon: 'home' },
+  { key: 'chat', label: 'Chat', icon: 'chat' },
   { key: 'recapitulare', label: 'Repetă', icon: 'repeat' },
   { key: 'colegi', label: 'Colegi', icon: 'people' },
   { key: 'profil', label: 'Profil', icon: 'user' },
@@ -55,7 +58,7 @@ function BottomNav({ page }) {
               {active && (
                 <motion.span layoutId="navpill" className="absolute inset-0 rounded-2xl bg-gradient-to-b from-[#f5c443]/20 to-[#ef4b3f]/10 border border-[#f5c443]/40 shadow-[0_0_20px_rgba(245,196,67,.25)]" transition={{ type: 'spring', stiffness: 500, damping: 35 }} />
               )}
-              <motion.span whileTap={{ scale: 0.85 }} className={'relative flex flex-col items-center gap-0.5 py-1.5 text-[11px] font-extrabold ' + (active ? 'text-[#f5c443]' : 'text-white/45')}>
+              <motion.span whileTap={{ scale: 0.85 }} className={'relative flex flex-col items-center gap-0.5 py-1.5 text-[10.5px] font-extrabold ' + (active ? 'text-[#f5c443]' : 'text-white/45')}>
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                   <path d={ICONS[n.icon]} />
                 </svg>
@@ -121,6 +124,18 @@ export default function App() {
       </div>
     );
 
+  if (profile.banned)
+    return (
+      <div className="splash">
+        <div className="card narrow text-center">
+          <div className="text-5xl">⛔</div>
+          <h2>Contul tău a fost suspendat</h2>
+          <p className="muted">Un administrator ți-a restricționat accesul. Dacă e o greșeală, contactează adminul.</p>
+          <button className="btn ghost" onClick={() => api.auth.signOut()}>Ieși din cont</button>
+        </div>
+      </div>
+    );
+
   const [page, arg] = route.parts;
   const ctx = { user, profile, progress, cards, refresh, setProfile, query: route.query };
   let body;
@@ -140,6 +155,9 @@ export default function App() {
       break;
     case 'joc':
       body = arg ? <Game {...ctx} gameId={arg} /> : <GameLobby {...ctx} />;
+      break;
+    case 'chat':
+      body = <Chat {...ctx} />;
       break;
     case 'profil':
       body = <Profile {...ctx} />;

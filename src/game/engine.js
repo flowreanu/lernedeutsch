@@ -25,7 +25,8 @@ export const CONQ_Q_MS = 20000;
 export const PICK_MS = 12000;
 export const TARGET_MS = 15000;
 export const ATTACK_MS = 15000;
-export const RESULT_MS = 3800;
+export const RESULT_MS = 5000;
+export const READY_MS = 3600; // numărătoarea 3-2-1 dinaintea fiecărei întrebări
 export const BANNER_MS = 2600;
 export const BATTLE_ROUNDS = 3;
 export const CONQ_ROUNDS = 4;
@@ -127,11 +128,21 @@ export function actors(s) {
 }
 
 function newQuestion(s, phase, ms, now) {
-  s.phase = phase;
-  s.q = gameQuestion(s.maxLesson);
+  // întâi o pauză cu numărătoare (3-2-1), apoi apare întrebarea
+  s.phase = 'ready';
+  s.q = null;
   s.answers = {};
   s.result = null;
-  setTimer(s, ms, now);
+  s.pending = { phase, ms, q: gameQuestion(s.maxLesson) };
+  setTimer(s, READY_MS, now);
+}
+function revealQuestion(s, now) {
+  const p = s.pending;
+  s.pending = null;
+  s.phase = p.phase;
+  s.q = p.q;
+  s.answers = {};
+  setTimer(s, p.ms, now);
 }
 
 // ------------------------------------------------------------------ start
@@ -382,7 +393,7 @@ function resolveConquest(s, now) {
   lines.forEach((l) => log(s, l));
   s.result = { correctAnswer: s.q.answer, answers: s.answers, lines, text: lines[0] || '' };
   s.phase = 'conq-result';
-  setTimer(s, RESULT_MS + 1200, now);
+  setTimer(s, RESULT_MS + 1500, now);
 }
 
 function afterConquestResult(s, now) {
@@ -507,6 +518,9 @@ export function tick(state, now = Date.now()) {
   if (state.status !== 'playing' || !state.deadline || now < state.deadline) return state;
   const s = clone(state);
   switch (s.phase) {
+    case 'ready':
+      revealQuestion(s, now);
+      break;
     case 'expand-q':
     case 'battle-q':
     case 'conq-q':

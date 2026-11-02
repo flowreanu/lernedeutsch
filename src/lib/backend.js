@@ -7,6 +7,15 @@ const URL_ = import.meta.env.VITE_SUPABASE_URL;
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const isDemo = import.meta.env.VITE_FORCE_DEMO === '1' || !URL_ || !KEY;
 
+// Cine poate șterge mesajul cui (aceeași regulă ca pe server):
+// admin → orice; moderator → ale lui și ale utilizatorilor obișnuiți; ceilalți → nimic
+export function canDeleteMessage(me, authorId, authorRole) {
+  if (!me) return false;
+  if (me.role === 'admin') return true;
+  if (me.role === 'moderator') return authorId === me.id || !authorRole || authorRole === 'user';
+  return false;
+}
+
 export const todayStr = (d = new Date()) => {
   const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
   return z.toISOString().slice(0, 10);
@@ -192,7 +201,11 @@ function makeSupabase() {
       must(await sb.from('chat_messages').insert({ user_id, body }));
     },
     async deleteMessage(id) {
-      must(await sb.from('chat_messages').delete().eq('id', id));
+      const rows = must(await sb.from('chat_messages').delete().eq('id', id).select('id'));
+      if (!rows.length) throw new Error('Nu ai drepturi să ștergi acest mesaj.');
+    },
+    async purgeMessages(userId) {
+      return must(await sb.rpc('admin_purge_messages', { p_user: userId }));
     },
     subscribeChat({ onInsert, onDelete }) {
       const ch = sb
@@ -387,8 +400,20 @@ function makeDemo() {
         }, 1800 + Math.random() * 2500);
     },
     async deleteMessage(id) {
-      set('chat', get('chat', []).filter((m) => m.id !== id));
+      const all = get('chat', null) || (await this.listMessages()).map(({ name, role, ...m }) => m);
+      const msg = all.find((m) => m.id === id);
+      const me = await this.getProfile();
+      const author = msg && (await this.getUser(msg.user_id));
+      if (!msg || !canDeleteMessage(me, msg.user_id, author?.role)) throw new Error('Nu ai drepturi să ștergi acest mesaj.');
+      set('chat', all.filter((m) => m.id !== id));
       chatSubs.forEach((h) => h.onDelete?.({ id }));
+    },
+    async purgeMessages(userId) {
+      const all = get('chat', null) || (await this.listMessages()).map(({ name, role, ...m }) => m);
+      const gone = all.filter((m) => m.user_id === userId);
+      set('chat', all.filter((m) => m.user_id !== userId));
+      gone.forEach((m) => chatSubs.forEach((h) => h.onDelete?.({ id: m.id })));
+      return gone.length;
     },
     subscribeChat(h) {
       chatSubs.push(h);

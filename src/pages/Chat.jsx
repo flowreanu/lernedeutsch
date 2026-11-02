@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { api } from '../lib/backend.js';
+import { api, canDeleteMessage } from '../lib/backend.js';
 import { sfx } from '../lib/fx.js';
 
 const tap = { whileHover: { scale: 1.04 }, whileTap: { scale: 0.92 } };
@@ -97,12 +97,22 @@ function ModSheet({ target, me, message, onClose, onDone }) {
           </>
         )}
 
-        {message && (isAdmin || me.role === 'moderator') && (
+        {message && canDeleteMessage(me, target.id, target.role) && (
           <motion.button {...tap} disabled={busy} className="btn ghost" onClick={() => run(() => api.deleteMessage(message.id), 'Mesaj șters')}>
-            🗑️ Șterge mesajul
+            🗑️ Șterge acest mesaj
           </motion.button>
         )}
-        {!canMute && !isAdmin && <p className="mt-4 text-sm font-bold text-white/50">Nu ai drepturi asupra acestui utilizator.</p>}
+        {isAdmin && target.id !== me.id && (
+          <motion.button
+            {...tap}
+            disabled={busy}
+            className="btn ghost"
+            onClick={() => run(async () => { const n = await api.purgeMessages(target.id); return n; }, `Au fost șterse mesajele lui ${target.display_name}`)}
+          >
+            🧹 Șterge TOATE mesajele lui {target.display_name}
+          </motion.button>
+        )}
+        {!canMute && !isAdmin && target.id !== me.id && <p className="mt-4 text-sm font-bold text-white/50">Nu ai drepturi asupra acestui utilizator (moderatorii nu au putere asupra altor moderatori sau a adminului).</p>}
         {err && <div className="msg bad">{err}</div>}
         <button className="link" onClick={onClose}>
           Închide
@@ -159,6 +169,7 @@ export default function Chat({ profile }) {
   const [usersOpen, setUsersOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [version, setVersion] = useState(0);
+  const [confirmDel, setConfirmDel] = useState(null);
   const listRef = useRef();
   const people = useRef({});
   const lastSend = useRef(0);
@@ -235,6 +246,24 @@ export default function Chat({ profile }) {
     setVersion((v) => v + 1);
   }
 
+  async function quickDelete(m) {
+    if (confirmDel !== m.id) {
+      setConfirmDel(m.id);
+      setTimeout(() => setConfirmDel((c) => (c === m.id ? null : c)), 3000);
+      return;
+    }
+    setConfirmDel(null);
+    try {
+      await api.deleteMessage(m.id);
+      setMsgs((list) => list && list.filter((x) => x.id !== m.id));
+      sfx.tap();
+      setToast('Mesaj șters');
+      setTimeout(() => setToast(null), 2000);
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
   const grouped = useMemo(() => {
     return (msgs || []).map((m, i, a) => ({ ...m, first: i === 0 || a[i - 1].user_id !== m.user_id || new Date(m.created_at) - new Date(a[i - 1].created_at) > 5 * 60000 }));
   }, [msgs]);
@@ -279,6 +308,7 @@ export default function Chat({ profile }) {
                       {mine ? 'Tu' : m.name} <RoleBadge role={m.role} /> <span className="font-bold text-white/30">{hhmm(m.created_at)}</span>
                     </button>
                   )}
+                  <div className={'flex items-center gap-1.5 ' + (mine ? 'flex-row-reverse' : '')}>
                   <div
                     onClick={() => !mine && staff && openSheet(m.user_id, m)}
                     className={
@@ -287,6 +317,20 @@ export default function Chat({ profile }) {
                     }
                   >
                     {m.body}
+                  </div>
+                  {canDeleteMessage(me, m.user_id, m.role) && (
+                    <motion.button
+                      {...tap}
+                      onClick={() => quickDelete(m)}
+                      title="Șterge mesajul"
+                      className={
+                        'flex-none rounded-lg border px-1.5 py-1 text-xs font-black transition ' +
+                        (confirmDel === m.id ? 'border-[#ef4b3f] bg-[#ef4b3f] text-white' : 'border-white/10 bg-white/5 text-white/40 hover:text-white')
+                      }
+                    >
+                      {confirmDel === m.id ? 'Șterge?' : '🗑️'}
+                    </motion.button>
+                  )}
                   </div>
                 </div>
               </motion.div>

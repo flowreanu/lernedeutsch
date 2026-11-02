@@ -207,6 +207,70 @@ function makeSupabase() {
     async purgeMessages(userId) {
       return must(await sb.rpc('admin_purge_messages', { p_user: userId }));
     },
+    // ---- prieteni + mesaje private
+    async friendships() {
+      return must(
+        await sb
+          .from('friendships')
+          .select('id,requester,addressee,status,created_at,req:profiles!friendships_requester_fkey(id,display_name,role),adr:profiles!friendships_addressee_fkey(id,display_name,role)')
+          .order('created_at', { ascending: false })
+      );
+    },
+    async searchUsers(q) {
+      const me = await uid();
+      let query = sb.from('profiles').select('id,display_name,role,xp').neq('id', me).eq('banned', false).order('display_name').limit(25);
+      if (q?.trim()) query = query.ilike('display_name', `%${q.trim()}%`);
+      return must(await query);
+    },
+    async sendFriendRequest(userId) {
+      const me = await uid();
+      const { error } = await sb.from('friendships').insert({ requester: me, addressee: userId });
+      if (error?.code === '23505') {
+        // există deja o relație: dacă el ți-a trimis cerere, o acceptăm
+        const rows = must(await sb.from('friendships').select('id,requester,status').eq('requester', userId).eq('addressee', me));
+        if (rows[0] && rows[0].status === 'pending') return this.acceptFriend(rows[0].id);
+        throw new Error('Cererea există deja.');
+      }
+      if (error) throw error;
+    },
+    async acceptFriend(id) {
+      const rows = must(await sb.from('friendships').update({ status: 'accepted' }).eq('id', id).select('id'));
+      if (!rows.length) throw new Error('Nu poți accepta această cerere.');
+    },
+    async removeFriend(id) {
+      must(await sb.from('friendships').delete().eq('id', id));
+    },
+    async dmRecent() {
+      return must(await sb.from('private_messages').select('id,sender,recipient,body,created_at,read_at').order('created_at', { ascending: false }).limit(400));
+    },
+    async dmThread(otherId) {
+      const me = await uid();
+      const rows = must(
+        await sb
+          .from('private_messages')
+          .select('id,sender,recipient,body,created_at,read_at')
+          .or(`and(sender.eq.${me},recipient.eq.${otherId}),and(sender.eq.${otherId},recipient.eq.${me})`)
+          .order('created_at', { ascending: false })
+          .limit(150)
+      );
+      return rows.reverse();
+    },
+    async sendDM(otherId, body) {
+      const me = await uid();
+      return must(await sb.from('private_messages').insert({ sender: me, recipient: otherId, body }).select().single());
+    },
+    async markRead(otherId) {
+      const me = await uid();
+      await sb.from('private_messages').update({ read_at: new Date().toISOString() }).eq('recipient', me).eq('sender', otherId).is('read_at', null);
+    },
+    subscribeSocial({ onDM, onFriendship }) {
+      const ch = sb
+        .channel('social-' + Math.random().toString(36).slice(2))
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, (p) => onDM?.(p.new))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, (p) => onFriendship?.(p))
+        .subscribe();
+      return () => sb.removeChannel(ch);
+    },
     async friends() {
       const groups = await this.myGroups();
       const me = await uid();
@@ -266,6 +330,7 @@ function makeDemo() {
   const games = {};
   const gameSubs = {};
   let chatSubs = [];
+  let socialSubs = [];
   const mods = () => get('mods', {});
   const setMod = (id, patch) => set('mods', { ...mods(), [id]: { ...(mods()[id] || {}), ...patch } });
   let moveId = 0;
@@ -415,6 +480,78 @@ function makeDemo() {
       if (!msg || !canDeleteMessage(me, msg.user_id, author?.role)) throw new Error('Nu ai drepturi să ștergi acest mesaj.');
       set('chat', all.filter((m) => m.id !== id));
       chatSubs.forEach((h) => h.onDelete?.({ id }));
+    },
+    // ---- prieteni + mesaje private (demo local; colegii de exemplu răspund singuri)
+    async friendships() {
+      const fr = get('friends', [{ id: 1, requester: 'f2', addressee: 'me', status: 'pending', created_at: new Date().toISOString() }]);
+      const users = Object.fromEntries((await this.listUsers()).map((u) => [u.id, u]));
+      return fr.map((f) => ({ ...f, req: users[f.requester], adr: users[f.addressee] }));
+    },
+    async searchUsers(q) {
+      return FAKE.filter((f) => !q || f.display_name.toLowerCase().includes(q.toLowerCase()));
+    },
+    async sendFriendRequest(userId) {
+      const fr = get('friends', null) || (await this.friendships()).map(({ req, adr, ...f }) => f);
+      const ex = fr.find((f) => (f.requester === 'me' && f.addressee === userId) || (f.requester === userId && f.addressee === 'me'));
+      if (ex && ex.requester === userId && ex.status === 'pending') return this.acceptFriend(ex.id);
+      if (ex) throw new Error('Cererea există deja.');
+      const nf = { id: Date.now(), requester: 'me', addressee: userId, status: 'pending', created_at: new Date().toISOString() };
+      set('friends', [nf, ...fr]);
+      socialSubs.forEach((h) => h.onFriendship?.({ eventType: 'INSERT', new: nf }));
+      // în demo, colegul acceptă după câteva secunde
+      setTimeout(() => {
+        const cur = get('friends', []);
+        const f = cur.find((x) => x.id === nf.id);
+        if (!f) return;
+        f.status = 'accepted';
+        set('friends', cur);
+        socialSubs.forEach((h) => h.onFriendship?.({ eventType: 'UPDATE', new: f }));
+      }, 3000);
+    },
+    async acceptFriend(id) {
+      const fr = get('friends', null) || (await this.friendships()).map(({ req, adr, ...f }) => f);
+      const f = fr.find((x) => x.id === id);
+      if (f) f.status = 'accepted';
+      set('friends', fr);
+      socialSubs.forEach((h) => h.onFriendship?.({ eventType: 'UPDATE', new: f }));
+    },
+    async removeFriend(id) {
+      const fr = get('friends', null) || (await this.friendships()).map(({ req, adr, ...f }) => f);
+      set('friends', fr.filter((x) => x.id !== id));
+      socialSubs.forEach((h) => h.onFriendship?.({ eventType: 'DELETE', old: { id } }));
+    },
+    async dmRecent() {
+      return [...get('dms', [])].reverse();
+    },
+    async dmThread(otherId) {
+      return get('dms', []).filter((m) => (m.sender === 'me' && m.recipient === otherId) || (m.sender === otherId && m.recipient === 'me'));
+    },
+    async sendDM(otherId, body) {
+      const me = await this.getProfile();
+      if (me.muted_until && new Date(me.muted_until) > new Date()) throw new Error('Ai mute.');
+      const fr = await this.friendships();
+      if (!fr.some((f) => f.status === 'accepted' && [f.requester, f.addressee].includes(otherId))) throw new Error('Poți scrie doar prietenilor.');
+      const m = { id: Date.now(), sender: 'me', recipient: otherId, body, created_at: new Date().toISOString(), read_at: null };
+      set('dms', [...get('dms', []), m].slice(-300));
+      socialSubs.forEach((h) => setTimeout(() => h.onDM?.(m), 0));
+      const replies = ['Hallo! 😊', 'Alles klar!', 'Danke, du auch!', 'Spielen wir später? ⚔️', 'Haha, genau 😂', 'Bis morgen! 👋'];
+      setTimeout(() => {
+        const r = { id: Date.now() + 1, sender: otherId, recipient: 'me', body: replies[Math.floor(Math.random() * replies.length)], created_at: new Date().toISOString(), read_at: null };
+        set('dms', [...get('dms', []), r].slice(-300));
+        socialSubs.forEach((h) => h.onDM?.(r));
+      }, 2000 + Math.random() * 2500);
+      return m;
+    },
+    async markRead(otherId) {
+      const d = get('dms', []);
+      d.forEach((m) => {
+        if (m.sender === otherId && m.recipient === 'me' && !m.read_at) m.read_at = new Date().toISOString();
+      });
+      set('dms', d);
+    },
+    subscribeSocial(h) {
+      socialSubs.push(h);
+      return () => (socialSubs = socialSubs.filter((x) => x !== h));
     },
     async friends() {
       const groups = await this.myGroups();

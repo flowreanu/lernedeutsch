@@ -12,6 +12,7 @@ import Game from './pages/Game.jsx';
 import Profile from './pages/Profile.jsx';
 import Chat from './pages/Chat.jsx';
 import InviteWatcher from './components/InviteWatcher.jsx';
+import { SocialProvider, useSocial } from './lib/social.jsx';
 
 function useHashRoute() {
   const parse = () => {
@@ -49,6 +50,7 @@ const NAV = [
 ];
 
 function BottomNav({ page }) {
+  const social = useSocial();
   return (
     <nav className="fixed bottom-0 inset-x-0 z-20 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2">
       <div className="mx-auto max-w-[600px] flex justify-around rounded-[22px] border border-white/10 bg-[#121722]/80 backdrop-blur-xl shadow-[0_-10px_40px_-10px_rgba(0,0,0,.8)] px-1 py-1.5">
@@ -64,6 +66,11 @@ function BottomNav({ page }) {
                   <path d={ICONS[n.icon]} />
                 </svg>
                 {n.label}
+                {n.key === 'chat' && social?.badge > 0 && (
+                  <motion.span key={social.badge} initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute right-[18%] top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-[#ef4b3f] px-1 text-[10px] font-black text-white shadow-red">
+                    {social.badge}
+                  </motion.span>
+                )}
               </motion.span>
             </a>
           );
@@ -168,6 +175,7 @@ export default function App() {
   }
 
   return (
+    <SocialProvider profile={profile}>
     <div className={'app' + (fullscreen ? ' fullscreen' : '')}>
       {isDemo && !fullscreen && (
         <div className="demo-banner">Mod demo — progresul se salvează doar în acest browser.</div>
@@ -176,5 +184,6 @@ export default function App() {
       <main className="main">{body}</main>
       {!fullscreen && <BottomNav page={page} />}
     </div>
+    </SocialProvider>
   );
 }

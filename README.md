@@ -31,6 +31,10 @@ Costuri: **0 €** (planurile gratuite Supabase + Vercel ajung pentru zeci/sute 
 Contul cu adresa **andreitufaru@proton.me** devine automat **admin** (și dacă îl creezi abia după).
 Adminul poate da mute (5/15/30 min), bana și numi moderatori; moderatorii pot da doar mute.
 
+### Pasul 1c — Ștergere mesaje, prieteni, mesaje private (o singură dată, în ordine)
+
+Rulează în SQL Editor: `supabase/update-3-chat-delete.sql`, apoi `supabase/update-4-friends-dm.sql`.
+
 ## Pasul 2 — Publicarea online (Vercel), ~10 minute
 
 1. Pune folderul proiectului pe **GitHub** (repo nou → *uploading an existing file* → tragi toate fișierele, **fără** `node_modules`).

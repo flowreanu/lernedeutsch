@@ -3,69 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { api, canDeleteMessage } from '../lib/backend.js';
 import { sfx } from '../lib/fx.js';
 import MessageBody from '../components/MessageBody.jsx';
+import { FriendActions, FriendsTab, PrivateTab } from './Social.jsx';
+import { useSocial } from '../lib/social.jsx';
 
-const tap = { whileHover: { scale: 1.04 }, whileTap: { scale: 0.92 } };
-const PALETTE = ['#f5c443', '#ef4b3f', '#9aa0ad', '#ff9f43', '#e86a8f', '#5fb4ff', '#5fe08f'];
-const colorOf = (id) => PALETTE[[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETTE.length];
-const hhmm = (d) => new Date(d).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
-const isMuted = (u) => u?.muted_until && new Date(u.muted_until) > new Date();
-
-const EMOJI = {
-  '😀': ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '🙂', '😉', '😍', '🥰', '😘', '😎', '🤓', '🤔', '🤨', '😐', '🙄', '😏', '😴', '😮', '😲', '😳', '🥺', '😢', '😭', '😤', '😡', '🤯', '🥳', '🤩', '😇', '🤗', '🤫', '🤭', '😬', '🫡', '🤪'],
-  '👍': ['👍', '👎', '👏', '🙌', '🙏', '💪', '👋', '🤝', '✌️', '🤞', '👌', '🤙', '👀', '🫶', '✍️', '🤷', '🙋', '🙈', '💯', '✅', '❌', '⭐', '🔥', '⚡', '💥', '🎉', '🎊', '🏆', '🥇', '🎯'],
-  '❤️': ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '💔', '💕', '💖', '💤', '💬', '💡', '❗', '❓'],
-  '🇩🇪': ['🇩🇪', '🇷🇴', '🥨', '🍺', '🌭', '🥖', '🧀', '☕', '🍰', '🏰', '⚔️', '🛡️', '👑', '🗺️', '🚆', '🚗', '🏠', '📚', '📝', '🎓', '🐻', '🦅', '⛰️', '🌲', '🎄', '⚽', '🎮', '🎵'],
-};
-
-function EmojiPicker({ onPick, onClose }) {
-  const [tab, setTab] = useState('😀');
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 12, scale: 0.95 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-      className="absolute bottom-[calc(100%+8px)] left-0 z-30 w-[min(340px,calc(100vw-32px))] rounded-2xl border border-white/10 bg-[#161b26]/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,.7)] backdrop-blur-xl"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="mb-2 flex gap-1 border-b border-white/10 pb-2">
-        {Object.keys(EMOJI).map((k) => (
-          <button key={k} type="button" onClick={() => setTab(k)} className={'flex-1 rounded-lg border-0 py-1.5 text-lg ' + (tab === k ? 'bg-[#f5c443]/20' : 'bg-transparent')}>
-            {k}
-          </button>
-        ))}
-        <button type="button" onClick={onClose} className="rounded-lg border-0 bg-transparent px-2 text-white/40">
-          ✕
-        </button>
-      </div>
-      <div className="grid max-h-[210px] grid-cols-8 gap-0.5 overflow-y-auto">
-        {EMOJI[tab].map((e) => (
-          <motion.button key={e} type="button" whileHover={{ scale: 1.25 }} whileTap={{ scale: 0.8 }} onClick={() => onPick(e)} className="grid h-10 place-items-center rounded-lg border-0 bg-transparent text-[22px] hover:bg-white/10">
-            {e}
-          </motion.button>
-        ))}
-      </div>
-    </motion.div>
-  );
-}
-
-function RoleBadge({ role }) {
-  if (role === 'admin') return <span className="rounded-md bg-[#f5c443]/20 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#f5c443]">👑 Admin</span>;
-  if (role === 'moderator') return <span className="rounded-md bg-[#ef4b3f]/20 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#ff7a6e]">🛡️ Mod</span>;
-  return null;
-}
-
-function Avatar({ id, name, size = 34 }) {
-  const c = colorOf(id);
-  return (
-    <span className="grid flex-none place-items-center rounded-full font-black text-[#14161c]" style={{ width: size, height: size, fontSize: size * 0.42, background: `radial-gradient(circle at 35% 30%, #fff8, ${c} 60%)`, boxShadow: `0 0 12px ${c}55` }}>
-      {(name || '?').slice(0, 1).toUpperCase()}
-    </span>
-  );
-}
-
+import { Avatar, EmojiPicker, RoleBadge, hhmm, isMuted, tap } from '../components/chatui.jsx';
 // Fereastra de moderare pentru un utilizator
-function ModSheet({ target, me, message, onClose, onDone }) {
+function ModSheet({ target, me, message, onClose, onDone, onPM }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const isAdmin = me.role === 'admin';
@@ -104,6 +47,12 @@ function ModSheet({ target, me, message, onClose, onDone }) {
             </div>
           </div>
         </div>
+
+        {target.id !== me.id && (
+          <div className="mt-4">
+            <FriendActions userId={target.id} onPM={onPM} />
+          </div>
+        )}
 
         {canMute && (
           <>
@@ -152,7 +101,7 @@ function ModSheet({ target, me, message, onClose, onDone }) {
             🧹 Șterge TOATE mesajele lui {target.display_name}
           </motion.button>
         )}
-        {!canMute && !isAdmin && target.id !== me.id && <p className="mt-4 text-sm font-bold text-white/50">Nu ai drepturi asupra acestui utilizator (moderatorii nu au putere asupra altor moderatori sau a adminului).</p>}
+        {me.role === 'moderator' && !canMute && target.id !== me.id && <p className="mt-4 text-sm font-bold text-white/50">Nu ai drepturi asupra acestui utilizator (moderatorii nu au putere asupra altor moderatori sau a adminului).</p>}
         {err && <div className="msg bad">{err}</div>}
         <button className="link" onClick={onClose}>
           Închide
@@ -200,7 +149,21 @@ function UsersPanel({ me, onClose, onPick, version }) {
   );
 }
 
-export default function Chat({ profile }) {
+export default function Chat({ profile, query }) {
+  const social = useSocial();
+  const [tab, setTab] = useState(query?.get('pm') ? 'private' : query?.get('tab') || 'general');
+  const [pmUser, setPmUser] = useState(query?.get('pm') || null);
+  useEffect(() => {
+    if (query?.get('pm')) {
+      setTab('private');
+      setPmUser(query.get('pm'));
+    }
+  }, [query?.get('pm')]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openPM = (id) => {
+    setSheet(null);
+    setPmUser(id);
+    setTab('private');
+  };
   const [me, setMe] = useState(profile);
   const [msgs, setMsgs] = useState(null);
   const [text, setText] = useState('');
@@ -292,7 +255,7 @@ export default function Chat({ profile }) {
   }
 
   async function openSheet(userId, message) {
-    if (!staff) return;
+    if (userId === me.id) return;
     const target = await api.getUser(userId);
     if (target) setSheet({ target, message });
   }
@@ -332,7 +295,7 @@ export default function Chat({ profile }) {
           <div className="brand">
             Lerne<span>Deutsch</span>
           </div>
-          <div className="text-xs font-extrabold uppercase tracking-widest text-white/45">💬 Chat · Sprecht Deutsch! 😉</div>
+          <div className="text-xs font-extrabold uppercase tracking-widest text-white/45">Chat · Sprecht Deutsch! 😉</div>
         </div>
         {staff && (
           <motion.button {...tap} onClick={() => setUsersOpen(true)} className="rounded-xl border border-[#f5c443]/40 bg-[#f5c443]/10 px-3 py-2 text-sm font-black text-[#f5c443]">
@@ -341,6 +304,28 @@ export default function Chat({ profile }) {
         )}
       </div>
 
+      <div className="mt-3 grid grid-cols-3 gap-1 rounded-2xl border border-white/10 bg-black/30 p-1">
+        {[
+          ['general', '💬 General', 0],
+          ['private', '✉️ Privat', social.unreadTotal],
+          ['friends', '👥 Prieteni', social.incoming.length],
+        ].map(([k, label, n]) => (
+          <button
+            key={k}
+            onClick={() => {
+              setTab(k);
+              if (k !== 'private') setPmUser(null);
+            }}
+            className={'relative rounded-xl border-0 py-2 text-sm font-black transition ' + (tab === k ? 'bg-[#f5c443]/15 text-[#f5c443] shadow-[inset_0_0_0_1px_rgba(245,196,67,.45)]' : 'bg-transparent text-white/50')}
+          >
+            {label}
+            {n > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-[#ef4b3f] px-1 text-[10px] font-black text-white shadow-red">{n}</span>}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'general' && (
+        <>
       <div ref={listRef} onClick={() => setEmojiOpen(false)} className="glass mt-3 flex-1 overflow-y-auto px-3 py-3">
         {!msgs && !err && <p className="text-center text-white/45">Se încarcă…</p>}
         {msgs && !msgs.length && <p className="mt-10 text-center font-bold text-white/45">Niciun mesaj încă. Scrie primul! 👋</p>}
@@ -367,7 +352,7 @@ export default function Chat({ profile }) {
                   )}
                   <div className={'flex items-center gap-1.5 ' + (mine ? 'flex-row-reverse' : '')}>
                   <div
-                    onClick={() => !mine && staff && openSheet(m.user_id, m)}
+                    onClick={() => !mine && openSheet(m.user_id, m)}
                     className={
                       'inline-block whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-left text-[15px] font-semibold ' +
                       (mine ? 'rounded-tr-md bg-gradient-to-b from-[#ffd96b] to-[#f2b51f] text-[#2a1d00] shadow-[0_4px_14px_-4px_rgba(245,196,67,.5)]' : 'rounded-tl-md border border-white/10 bg-white/[.07] text-white')
@@ -426,11 +411,17 @@ export default function Chat({ profile }) {
           </>
         )}
       </form>
+        </>
+      )}
+      {tab === 'private' && <PrivateTab me={me} pmUser={pmUser} setPmUser={setPmUser} onUser={(id) => openSheet(id)} />}
+      {tab === 'friends' && <FriendsTab onPM={openPM} onUser={(id) => openSheet(id)} />}
+      {tab !== 'general' && <div className="h-3" />}
+
 
       <AnimatePresence>
         {usersOpen && <UsersPanel version={version} me={me} onClose={() => setUsersOpen(false)} onPick={(u) => setSheet({ target: u })} />}
       </AnimatePresence>
-      <AnimatePresence>{sheet && <ModSheet target={sheet.target} message={sheet.message} me={me} onClose={() => setSheet(null)} onDone={done} />}</AnimatePresence>
+      <AnimatePresence>{sheet && <ModSheet target={sheet.target} message={sheet.message} me={me} onClose={() => setSheet(null)} onDone={done} onPM={openPM} />}</AnimatePresence>
       <AnimatePresence>
         {toast && (
           <motion.div initial={{ y: -40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -40, opacity: 0 }} className="fixed inset-x-0 top-4 z-[60] mx-auto w-fit rounded-xl border border-[#f5c443]/50 bg-[#141924] px-4 py-2.5 text-sm font-black text-[#f5c443] shadow-gold">

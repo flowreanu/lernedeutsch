@@ -38,10 +38,10 @@ export const ADJ = {
 
 // Capitalele de start (vest, est, sud) — castele cu 3 turnuri
 export const CAPITALS = ['W', 'B', 'Y'];
-// Culorile steagului german, ușor pastelate
+// Culorile drapelului: Andrei (gazda) = galben-auriu, al 2-lea = roșu, al 3-lea = negru/grafit
 export const COLORS = [
-  { name: 'Roșu', fill: '#e0645a', light: '#ffab9f', dark: '#8e2a24', chip: '#e0645a' },
-  { name: 'Negru', fill: '#3d3c42', light: '#7d7b85', dark: '#121115', chip: '#9d9aa6' },
-  { name: 'Auriu', fill: '#f2bf3c', light: '#ffe8a3', dark: '#94690a', chip: '#f2bf3c' },
+  { name: 'Auriu', fill: '#f5c443', light: '#ffe58f', dark: '#a87505', glow: 'rgba(245,196,67,.75)', text: '#2a1d00' },
+  { name: 'Roșu', fill: '#ef4b3f', light: '#ff8f84', dark: '#8c1a12', glow: 'rgba(239,75,63,.75)', text: '#ffffff' },
+  { name: 'Negru', fill: '#16181e', light: '#aab0bd', dark: '#050608', glow: 'rgba(170,176,190,.6)', text: '#ffffff' },
 ];
-export const NEUTRAL = { fill: '#cfc3ab', light: '#f4ecdc', dark: '#8f8268' };
+export const NEUTRAL = { fill: '#6b7180', light: '#8f95a3', dark: '#454a55' };

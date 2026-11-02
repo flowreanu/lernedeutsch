@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import { api, isDemo } from './lib/backend.js';
 import Auth from './pages/Auth.jsx';
 import Home from './pages/Home.jsx';
@@ -28,13 +29,45 @@ function useHashRoute() {
   return route;
 }
 
+const ICONS = {
+  joc: 'M7 9h2m-1-1v2m7 0h.01M17 8h.01M6 5h12a4 4 0 0 1 4 4v5a4 4 0 0 1-7 2.6L14 15h-4l-1 1.6A4 4 0 0 1 2 14V9a4 4 0 0 1 4-4z',
+  home: 'M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
+  repeat: 'M4 12a8 8 0 0 1 13.7-5.6L20 9M20 4v5h-5M20 12a8 8 0 0 1-13.7 5.6L4 15m0 5v-5h5',
+  people: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm8 0a3 3 0 1 0 0-6M2 21v-1a6 6 0 0 1 12 0v1m3-7a5 5 0 0 1 5 5v2',
+  user: 'M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm-8 10a8 8 0 0 1 16 0',
+};
 const NAV = [
-  { key: '', label: 'Acasă', icon: '⌂' },
-  { key: 'recapitulare', label: 'Repetă', icon: '↻' },
-  { key: 'joc', label: 'Joc', icon: '⚑' },
-  { key: 'colegi', label: 'Colegi', icon: '☰' },
-  { key: 'profil', label: 'Profil', icon: '◉' },
+  { key: 'joc', label: 'Joc', icon: 'joc' },
+  { key: '', label: 'Acasă', icon: 'home' },
+  { key: 'recapitulare', label: 'Repetă', icon: 'repeat' },
+  { key: 'colegi', label: 'Colegi', icon: 'people' },
+  { key: 'profil', label: 'Profil', icon: 'user' },
 ];
+
+function BottomNav({ page }) {
+  return (
+    <nav className="fixed bottom-0 inset-x-0 z-20 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-2">
+      <div className="mx-auto max-w-[600px] flex justify-around rounded-[22px] border border-white/10 bg-[#121722]/80 backdrop-blur-xl shadow-[0_-10px_40px_-10px_rgba(0,0,0,.8)] px-1 py-1.5">
+        {NAV.map((n) => {
+          const active = (page || '') === n.key;
+          return (
+            <a key={n.key} href={'#/' + n.key} className="relative flex-1 no-underline">
+              {active && (
+                <motion.span layoutId="navpill" className="absolute inset-0 rounded-2xl bg-gradient-to-b from-[#f5c443]/20 to-[#ef4b3f]/10 border border-[#f5c443]/40 shadow-[0_0_20px_rgba(245,196,67,.25)]" transition={{ type: 'spring', stiffness: 500, damping: 35 }} />
+              )}
+              <motion.span whileTap={{ scale: 0.85 }} className={'relative flex flex-col items-center gap-0.5 py-1.5 text-[11px] font-extrabold ' + (active ? 'text-[#f5c443]' : 'text-white/45')}>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={ICONS[n.icon]} />
+                </svg>
+                {n.label}
+              </motion.span>
+            </a>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
 
 export default function App() {
   const [user, setUser] = useState(undefined);
@@ -121,16 +154,7 @@ export default function App() {
         <div className="demo-banner">Mod demo — progresul se salvează doar în acest browser.</div>
       )}
       <main className="main">{body}</main>
-      {!fullscreen && (
-        <nav className="bottom-nav">
-          {NAV.map((n) => (
-            <a key={n.key} href={'#/' + n.key} className={(page || '') === n.key ? 'active' : ''}>
-              <span className="ico">{n.icon}</span>
-              <span>{n.label}</span>
-            </a>
-          ))}
-        </nav>
-      )}
+      {!fullscreen && <BottomNav page={page} />}
     </div>
   );
 }

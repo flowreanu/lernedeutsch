@@ -346,8 +346,10 @@ export default function Game({ gameId, user, profile, refresh }) {
     if (lastFx.current === key) return;
     lastFx.current = key;
     const i = playerIndex(state, user.id);
-    if (/-result$/.test(state.phase || '') && state.result?.answers?.[i]) {
-      state.result.answers[i].c === state.result.correctAnswer ? sfx.correct() : sfx.wrong();
+    if (/-result$/.test(state.phase || '') && state.q) {
+      const a = state.result?.answers?.[i];
+      if (a) a.c === state.result.correctAnswer ? sfx.correct() : sfx.wrong();
+      else sfx.reveal();
     }
     if (state.status === 'finished' && i >= 0) {
       if (state.scores[i] === Math.max(...state.scores)) {
@@ -470,7 +472,7 @@ export default function Game({ gameId, user, profile, refresh }) {
   }
 
   // ---------------------------------------------------------------- panouri
-  const panelKey = `${ph}-${state.timer.seq}`;
+  const panelKey = state.q && (/-q$/.test(ph || '') || /-result$/.test(ph || '')) ? `q-${state.q.id}` : `${ph}-${state.timer.seq}`;
   let panel = null;
   let panelOnTop = false;
 
@@ -560,20 +562,26 @@ export default function Game({ gameId, user, profile, refresh }) {
         <div className="text-sm font-bold text-white/80">{what}</div>
       </div>
     );
-  } else if (state.q && (ph === 'expand-q' || ph === 'battle-q' || ph === 'conq-q' || ph === 'tie-q')) {
+  } else if (state.q && (['expand-q', 'battle-q', 'conq-q', 'tie-q'].includes(ph) || /-result$/.test(ph || ''))) {
+    // Întrebarea rămâne pe ecran și la rezultat: se vede ce a ales fiecare, iar răspunsul corect se aprinde verde.
     panelOnTop = true;
+    const reveal = /-result$/.test(ph);
+    const qph = reveal ? ph.replace('-result', '-q') : ph;
+    const r = state.result;
+    const ansMap = reveal ? r?.answers || {} : state.answers || {};
+    const speed = qph !== 'conq-q';
     const head =
-      ph === 'battle-q' ? (
+      qph === 'battle-q' ? (
         <span>
-          <Dot i={state.battle.attacker} /> <b>{nm(state.battle.attacker)}</b> atacă {state.castle?.[state.battle.target] ? '🏰 capitala' : REGIONS[state.battle.target].short} (<Dot i={state.battle.defender} /> {nm(state.battle.defender)})
+          <Dot i={state.battle.attacker} /> <b>{nm(state.battle.attacker)}</b> atacă {state.castle?.[state.battle.target] || r?.outcome === 'hit' ? '🏰 capitala' : REGIONS[state.battle.target].short} (<Dot i={state.battle.defender} /> {nm(state.battle.defender)})
           {state.battle.assault > 0 && <span className="ml-1 rounded-md bg-[#ef4b3f] px-1.5 py-0.5 text-[10px] font-black uppercase text-white">Asalt #{state.battle.assault + 1}</span>}
         </span>
-      ) : ph === 'conq-q' ? (
+      ) : qph === 'conq-q' ? (
         <span>
           {myTarget ? <>Landul tău: <b className="text-[#f5c443]">{REGIONS[myTarget].short}</b> · </> : null}
           <span className="text-white/55">timpul nu contează</span>
         </span>
-      ) : ph === 'tie-q' ? (
+      ) : qph === 'tie-q' ? (
         <span>
           <b className="text-[#ff7a6e]">⚡ Stichfrage!</b> <span className="text-white/55">Cel mai rapid corect alege un land</span>
         </span>
@@ -582,11 +590,18 @@ export default function Game({ gameId, user, profile, refresh }) {
           <b>Toată lumea!</b> <span className="text-white/55">1. ia 2 landuri · 2. ia 1</span>
         </span>
       );
+    const answeredList = Object.keys(ansMap).map(Number);
     panel = (
       <div>
         <div className="flex items-center justify-between gap-3">
           <div className="text-sm font-bold leading-snug">{head}</div>
-          <Timer left={left} total={total} />
+          {reveal ? (
+            <motion.span initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="rounded-lg bg-[#3ccf7a]/15 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-[#9ff3c1]">
+              Rezultat
+            </motion.span>
+          ) : (
+            <Timer left={left} total={total} />
+          )}
         </div>
         <div className="mt-2 text-[11px] font-black uppercase tracking-widest text-white/45">{state.q.kind}</div>
         <div className="text-2xl font-black leading-tight">{state.q.prompt}</div>
@@ -594,75 +609,90 @@ export default function Game({ gameId, user, profile, refresh }) {
         <div className="mt-3 grid grid-cols-2 gap-2.5">
           {state.q.options.map((o, i) => {
             const picked = myAnswer?.qid === state.q.id && myAnswer.c === i;
+            const correct = reveal && i === r.correctAnswer;
+            const myPick = reveal ? ansMap[me]?.c === i : false;
+            const wrongPick = reveal && !correct && myPick;
+            let cls = 'border border-white/12 bg-white/[.06] text-white shadow-[0_4px_0_rgba(0,0,0,.55)] ';
+            if (!reveal && picked) cls = 'border border-[#f5c443] bg-gradient-to-b from-[#ffd96b] to-[#f2b51f] text-[#2a1d00] shadow-[0_4px_0_#b9850a,0_0_24px_rgba(245,196,67,.5)] ';
+            else if (!reveal) cls += !iAnswer || answered ? 'opacity-50 ' : 'hover:bg-white/10 ';
+            if (correct) cls = 'border border-[#5ee597] bg-gradient-to-b from-[#4fdc8c] to-[#21a457] text-[#04210f] ';
+            if (wrongPick) cls = 'border border-[#ef4b3f]/70 bg-[#ef4b3f]/15 text-[#ffb0a8] shadow-[0_4px_0_rgba(0,0,0,.55)] ';
+            if (reveal && !correct && !wrongPick) cls += 'opacity-40 ';
             return (
               <motion.button
                 key={i}
                 initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 * i }}
-                whileHover={iAnswer && !answered ? { scale: 1.03 } : {}}
-                whileTap={iAnswer && !answered ? { scale: 0.93 } : {}}
-                disabled={!iAnswer || !!answered}
-                onClick={() => choose(i)}
-                className={
-                  'rounded-2xl px-3 py-3.5 text-[15px] font-extrabold transition ' +
-                  (picked
-                    ? 'border border-[#f5c443] bg-gradient-to-b from-[#ffd96b] to-[#f2b51f] text-[#2a1d00] shadow-[0_4px_0_#b9850a,0_0_24px_rgba(245,196,67,.5)]'
-                    : 'border border-white/12 bg-white/[.06] text-white shadow-[0_4px_0_rgba(0,0,0,.55)] ' + (!iAnswer || answered ? 'opacity-50' : 'hover:bg-white/10'))
+                animate={
+                  correct
+                    ? { opacity: 1, y: 0, scale: [1, 1.07, 1], boxShadow: ['0 0 0px rgba(60,207,122,0)', '0 0 34px rgba(60,207,122,.9)', '0 0 18px rgba(60,207,122,.55)'] }
+                    : wrongPick
+                    ? { opacity: 1, y: 0, x: [0, -5, 5, -3, 0] }
+                    : { opacity: 1, y: 0 }
                 }
+                transition={correct ? { duration: 0.7, ease: 'easeOut' } : { delay: reveal ? 0 : 0.05 * i, duration: 0.35 }}
+                whileHover={!reveal && iAnswer && !answered ? { scale: 1.03 } : {}}
+                whileTap={!reveal && iAnswer && !answered ? { scale: 0.93 } : {}}
+                disabled={reveal || !iAnswer || !!answered}
+                onClick={() => choose(i)}
+                className={'relative flex min-h-[56px] items-center justify-center rounded-2xl px-3 py-3 text-[15px] font-extrabold transition-colors ' + cls}
               >
-                {o}
+                {correct && (
+                  <motion.span initial={{ scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 500, damping: 15, delay: 0.15 }} className="absolute -right-1.5 -top-1.5 grid h-6 w-6 place-items-center rounded-full bg-white text-sm font-black text-[#21a457] shadow-[0_0_12px_rgba(60,207,122,.9)]">
+                    ✓
+                  </motion.span>
+                )}
+                <span>{o}</span>
               </motion.button>
             );
           })}
         </div>
-        <p className="m-0 mt-2.5 text-center text-xs font-bold text-white/45">
-          {!iAnswer ? 'Doar cei implicați răspund acum — urmărește!' : answered ? 'Ai răspuns. Așteaptă ceilalți…' : ph === 'conq-q' ? 'Gândește-te bine — ai timp.' : 'Corect și repede!'}
-          {' · '}Au răspuns: {Object.keys(state.answers).length}/{ans.length}
-        </p>
-      </div>
-    );
-  } else if (/-result$/.test(ph || '')) {
-    panelOnTop = true;
-    const r = state.result;
-    const involved = ph === 'battle-result' ? [state.battle.attacker, state.battle.defender] : ph === 'conq-result' ? Object.keys(state.conq.targets).map(Number).filter((k) => state.conq.targets[k]) : state.players.map((_, k) => k);
-    panel = (
-      <div>
-        {r.lines ? (
-          <ul className="m-0 grid list-none gap-1.5 p-0">
-            {r.lines.map((l, k) => (
-              <motion.li key={k} initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.25 * k }} className="rounded-xl bg-white/5 px-3 py-2 text-sm font-bold">
-                {l}
-              </motion.li>
-            ))}
-          </ul>
+        {reveal ? (
+          <>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+              {(qph === 'battle-q' ? [state.battle.attacker, state.battle.defender] : qph === 'conq-q' ? Object.keys(state.conq?.targets || {}).map(Number).filter((k) => state.conq.targets[k]) : state.players.map((_, k) => k))
+                .map((k) => ({ k, a: ansMap[k] }))
+                .sort((x, y) => (x.a ? x.a.t : 1e9) - (y.a ? y.a.t : 1e9))
+                .map(({ k, a }, n) => {
+                  const ok = a && a.c === r.correctAnswer;
+                  return (
+                    <motion.span
+                      key={k}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.25 + n * 0.1 }}
+                      className={
+                        'flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-xs font-black ' +
+                        (!a ? 'border-white/10 bg-white/5 text-white/40' : ok ? 'border-[#3ccf7a]/60 bg-[#3ccf7a]/15 text-[#c8f7da]' : 'border-[#ef4b3f]/50 bg-[#ef4b3f]/12 text-[#ffc2bb]')
+                      }
+                    >
+                      <span className="grid h-5 w-5 place-items-center rounded-full text-[10px]" style={{ background: col(k).fill, color: col(k).text, boxShadow: `0 0 6px ${col(k).glow}` }}>
+                        {(nm(k) || '?').slice(0, 1)}
+                      </span>
+                      {nm(k)}
+                      <span className="font-bold opacity-75">{!a ? 'fără răspuns' : speed ? `${(a.t / 1000).toFixed(1)}s` : ''}</span>
+                    </motion.span>
+                  );
+                })}
+            </div>
+            {r?.text && !r.lines && (
+              <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="m-0 mt-3 text-center text-sm font-extrabold text-white/80">
+                {r.text}
+              </motion.p>
+            )}
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <motion.div key={state.timer.seq} className="h-full rounded-full bg-gradient-to-r from-[#ef4b3f] to-[#f5c443]" initial={{ width: '100%' }} animate={{ width: '0%' }} transition={{ duration: total, ease: 'linear' }} />
+            </div>
+          </>
         ) : (
-          <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className={'rounded-xl px-3 py-2.5 text-center font-extrabold ' + (r.outcome === 'captured' ? 'bg-[#ef4b3f]/20 text-[#ffb0a8]' : r.outcome === 'hit' ? 'bg-[#f5c443]/20 text-[#ffe08a]' : r.outcome === 'defended' ? 'bg-[#3ccf7a]/15 text-[#9ff3c1]' : 'bg-white/5')}>
-            {r.text}
-          </motion.div>
+          <div className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5 text-xs font-bold text-white/45">
+            <span>{!iAnswer ? 'Doar cei implicați răspund — urmărește!' : answered ? 'Ai răspuns. Așteaptă ceilalți…' : qph === 'conq-q' ? 'Gândește-te bine — ai timp.' : 'Corect și repede!'}</span>
+            {ans.map((k) => (
+              <span key={k} className={'rounded-full px-2 py-0.5 text-[11px] font-black ' + (state.answers[k] ? 'bg-white/10 text-white/80' : 'bg-white/5 text-white/30')}>
+                {nm(k)} {state.answers[k] ? '✓' : '…'}
+              </span>
+            ))}
+          </div>
         )}
-        {state.q && (
-          <p className="m-0 mt-2 text-center text-sm font-bold text-white/60">
-            Răspuns corect: <b className="text-[#3ccf7a]">{state.q.options[r.correctAnswer]}</b>
-          </p>
-        )}
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-          <motion.div key={state.timer.seq} className="h-full rounded-full bg-gradient-to-r from-[#ef4b3f] to-[#f5c443]" initial={{ width: '100%' }} animate={{ width: '0%' }} transition={{ duration: total, ease: 'linear' }} />
-        </div>
-        <p className="m-0 mt-1 text-center text-[11px] font-bold text-white/40">Continuăm în {Math.ceil(left)}s…</p>
-        <div className="mt-2 grid gap-1">
-          {involved.map((k) => {
-            const a = r.answers?.[k];
-            return (
-              <div key={k} className="flex items-center gap-2 text-sm font-bold">
-                <Dot i={k} /> {nm(k)}
-                {state.mode === 'conquest' && ph === 'conq-result' && <span className="text-white/45">→ {REGIONS[state.conq.targets[k]]?.short}</span>}
-                <span className="ml-auto">{a ? (a.c === r.correctAnswer ? '✅' : '❌') : '—'}</span>
-                {a && ph !== 'conq-result' && <small className="w-12 text-right text-white/45">{(a.t / 1000).toFixed(2)}s</small>}
-              </div>
-            );
-          })}
-        </div>
       </div>
     );
   } else if (ph === 'conq-target') {

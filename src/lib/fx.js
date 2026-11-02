@@ -105,6 +105,7 @@ export const sfx = {
   turn: () => play(() => { tone(659, 0, 0.1, 'triangle', 0.12); tone(880, 0.1, 0.18, 'triangle', 0.12); }),
   banner: () => play(() => { tone(392, 0, 0.18, 'sawtooth', 0.06); tone(523, 0.15, 0.18, 'sawtooth', 0.06); tone(659, 0.3, 0.35, 'sawtooth', 0.06); }),
   fanfare: () => play(() => [392, 523, 659, 784, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.13, i === 6 ? 0.7 : 0.14, 'sawtooth', 0.07))),
+  reveal: () => play(() => { tone(659, 0, 0.1, 'triangle', 0.1); tone(988, 0.08, 0.14, 'triangle', 0.1); tone(1319, 0.16, 0.3, 'sine', 0.08); }),
   message: () => play(() => tone(1046, 0, 0.08, 'sine', 0.08)),
 };
 

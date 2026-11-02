@@ -59,9 +59,14 @@ let audio = null;
 function speakOnline(text, rate) {
   try {
     if (audio) audio.pause();
-    const slow = rate < 0.8 ? '&ttsspeed=0.3' : '';
-    audio = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&tl=de&client=tw-ob${slow}&q=${encodeURIComponent(text)}`);
-    audio.play().catch(() => {});
+    const slow = rate < 0.8;
+    // Pe site-ul publicat trecem prin funcția proprie (/api/tts); local/demo direct.
+    const onSite = /^https?:$/.test(location.protocol) && !/^(localhost|127\.)/.test(location.hostname) && !import.meta.env.VITE_FORCE_DEMO;
+    const src = onSite
+      ? `/api/tts?q=${encodeURIComponent(text)}${slow ? '&slow=1' : ''}`
+      : `https://translate.google.com/translate_tts?ie=UTF-8&tl=de&client=tw-ob${slow ? '&ttsspeed=0.3' : ''}&q=${encodeURIComponent(text)}`;
+    audio = new Audio(src);
+    audio.play().catch((e) => console.warn('Audio online indisponibil:', e));
   } catch {}
 }
 
@@ -75,12 +80,14 @@ export async function speak(text, rate = 0.9) {
   if (!voice) return speakOnline(text, rate); // nicio voce germană în sistem
   try {
     if (audio) audio.pause();
-    speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.voice = voice;
     u.lang = voice.lang;
     u.rate = rate;
-    speechSynthesis.speak(u);
+    if (speechSynthesis.speaking || speechSynthesis.pending) {
+      speechSynthesis.cancel();
+      setTimeout(() => speechSynthesis.speak(u), 60);
+    } else speechSynthesis.speak(u);
   } catch {
     speakOnline(text, rate);
   }

@@ -17,7 +17,7 @@ import {
   validPicks,
   validTargets,
 } from '../game/engine.js';
-import { REGIONS } from '../game/map.js';
+import { ADJ, REGIONS } from '../game/map.js';
 import GermanyMap from '../game/GermanyMap.jsx';
 import { go } from '../lib/nav.js';
 import { confetti, musicOn, setMusic, setSound, sfx, soundOn, startMusic, stopMusic } from '../lib/fx.js';
@@ -200,7 +200,7 @@ export function ModeCard({ mode, selected, onClick, disabled }) {
       <p className="m-0 mt-2 text-[13px] font-semibold leading-snug text-white/55">
         {isBlitz
           ? 'Cel mai rapid răspuns corect ia 2 landuri, al doilea 1. Apoi bătălii; capitala (3 turnuri) se atacă doar din vecinătate — un turn zdrobit îți dă o nouă întrebare în același tur.'
-          : 'Pe rând, fiecare alege un land liber (apoi doar vecine cu ale lui). Toți răspund: corect = primești landul, greșit = rămâne liber. Primul land e capitala ta. După ce harta e împărțită începe războiul între jucători.'}
+          : 'Pe rând, fiecare alege un land liber (apoi vecin cu al lui; fără vecini liberi — oriunde). Corect = primești landul (200 p), greșit = rămâne liber. Când rămân mai puține landuri decât jucători: cel mai rapid corect ia câte unul (300 p). Apoi războiul — fiecare land cucerit valorează 400 p.'}
       </p>
     </motion.button>
   );
@@ -537,7 +537,7 @@ export default function Game({ gameId, user, profile, refresh }) {
       ) : pp === 'conq-q' ? (
         <>Răspuns corect = primești landul ales{myTarget ? <> · al tău: <b className="text-[#f5c443]">{REGIONS[myTarget].short}</b></> : ''}</>
       ) : pp === 'tie-q' ? (
-        <><b className="text-[#ff7a6e]">⚡ Stichfrage</b> — cel mai rapid ia un land</>
+        <><b className="text-[#ff7a6e]">⚡ Stichfrage</b> — cel mai rapid corect ia un land (+300 p)</>
       ) : (
         <>Întrebare pentru toți · 🥇 2 landuri · 🥈 1 land</>
       );
@@ -671,7 +671,7 @@ export default function Game({ gameId, user, profile, refresh }) {
           <div>
             <div className="text-[11px] font-black uppercase tracking-widest text-[#f5c443]">Împărțirea · runda {state.conq.round}</div>
             <b className={mine ? 'text-[#f5c443]' : ''}>
-              {mine ? (landCount(state, me) ? 'Alege un land liber, vecin cu al tău' : 'Alege primul tău land (va fi capitala)') : <><Dot i={who} /> {nm(who)} alege un land…</>}
+              {mine ? (!landCount(state, me) ? 'Alege primul tău land (va fi capitala)' : selectable.every((r) => ADJ[r].some((o) => state.owner[o] === me)) ? 'Alege un land liber, vecin cu al tău' : 'Nu mai ai vecini liberi — alege orice land liber') : <><Dot i={who} /> {nm(who)} alege un land…</>}
             </b>
           </div>
           <Timer left={left} total={total} />
@@ -687,7 +687,7 @@ export default function Game({ gameId, user, profile, refresh }) {
             );
           })}
         </div>
-        <p className="m-0 mt-2 text-xs font-bold text-white/45">Nu se pot alege landurile altora și nici același land de două ori. Apoi toți răspund la o întrebare.</p>
+        <p className="m-0 mt-2 text-xs font-bold text-white/45">Doar landuri libere, vecine cu ale tale (dacă nu mai ai vecini liberi — oriunde). Nu se poate alege același land de două ori. Răspuns corect = +200 p.</p>
       </div>
     );
   } else if (ph === 'expand-pick' || ph === 'start-pick' || ph === 'tie-pick' || ph === 'battle-select') {
@@ -715,7 +715,7 @@ export default function Game({ gameId, user, profile, refresh }) {
     panel = (
       <div className="text-center">
         <div className="text-2xl font-black text-[#ff7a6e]">⚡ Stichfrage</div>
-        <p className="m-0 font-bold text-white/60">{freeRegions(state).length} landuri libere · cel mai rapid răspuns corect le cucerește pe rând</p>
+        <p className="m-0 font-bold text-white/60">{freeRegions(state).length} {freeRegions(state).length === 1 ? 'land liber' : 'landuri libere'} · 1 întrebare = 1 land pentru cel mai rapid răspuns corect (+300 p)</p>
       </div>
     );
   } else if (state.status === 'finished') {

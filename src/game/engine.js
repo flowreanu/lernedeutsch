@@ -9,12 +9,14 @@
 //     atacatorul ia tot teritoriul apărătorului și mai atacă o dată.
 //
 // EROBERUNGSKRIEG (Război de cucerire, varianta extinsă)
-//  1) Împărțirea: în fiecare rundă jucătorii aleg PE RÂND câte un land liber (nu același).
-//     Prima alegere: orice land liber; apoi doar landuri libere VECINE cu ce ai deja. Nu se atacă.
-//     Apoi o întrebare pentru toți: corect → primești landul ales; greșit → rămâne liber.
+//  1) Împărțirea: jucătorii aleg PE RÂND câte un land liber (nu același). Prima alegere: oriunde;
+//     apoi doar landuri libere VECINE — iar dacă nu mai ai vecini liberi, oriunde pe hartă.
+//     O întrebare pentru toți: corect → primești landul (viteza nu contează); greșit → rămâne liber.
 //     Primul land câștigat devine capitala ta (3 turnuri).
-//  2) Dacă după runde mai rămân landuri libere → Stichfrage (cel mai rapid le ia pe rând).
-//  3) Războiul: când harta e plină, încep bătăliile între jucători (ca la Blitzkrieg).
+//  2) Când rămân mai puține landuri libere decât jucători → Stichfrage: 1 întrebare = 1 land,
+//     pentru cel mai rapid răspuns corect.
+//  3) Războiul: când harta e plină, încep bătăliile între jucători.
+// Puncte: 200 = land ocupat la împărțire, 300 = land câștigat la departajare, 400 = land cucerit în război.
 import { ADJ, BASE_VALUE, COLORS, REGION_IDS, REGIONS } from './map.js';
 import { gameQuestion } from '../lib/learn.js';
 
@@ -31,9 +33,12 @@ export const RESULT_MS = 5000;
 export const READY_MS = 3600; // numărătoarea 3-2-1 dinaintea fiecărei întrebări
 export const BANNER_MS = 2600;
 export const BATTLE_ROUNDS = 3;
-export const CONQ_ROUNDS = 6; // runde de împărțire
+export const CONQ_ROUNDS = 20; // limită de siguranță pentru împărțire
 export const CONQ_WAR_ROUNDS = 4; // runde de război după împărțire
-export const CAPITAL_VALUE = 600;
+export const CAPITAL_VALUE = 200;
+export const VALUE_SPLIT = 200; // ocupat la împărțire
+export const VALUE_TIE = 300; // câștigat la departajare (Stichfrage)
+export const VALUE_WAR = 400; // cucerit în război
 export const CASTLE_HP = 3;
 export const DEFEND_BONUS = 100;
 export const BLITZ_CAPITALS = ['W', 'B', 'Y'];
@@ -50,7 +55,7 @@ export function createState(host, maxLesson = 12, mode = 'blitz') {
     maxLesson,
     players: [{ id: host.id, name: host.name, color: 0, bot: false }],
     owner: Object.fromEntries(REGION_IDS.map((r) => [r, null])),
-    value: { ...BASE_VALUE },
+    value: Object.fromEntries(REGION_IDS.map((r) => [r, VALUE_SPLIT])),
     castle: {}, // rid -> turnuri rămase
     capital: {}, // playerIndex -> rid
     q: null,
@@ -114,7 +119,7 @@ export function validConquestTargets(s, i) {
   const free = freeRegions(s).filter((r) => !taken.includes(r));
   if (!landCount(s, i)) return free;
   const adjacent = free.filter((r) => adjacentToMine(s, i, r));
-  return adjacent.length ? adjacent : [];
+  return adjacent.length ? adjacent : free; // fără vecini liberi → orice land liber
 }
 
 export function answerers(s) {
@@ -200,6 +205,7 @@ function resolveExpand(s, now) {
 
 function doExpandPick(s, i, rid, now) {
   s.owner[rid] = i;
+  s.value[rid] = VALUE_SPLIT;
   event(s, 'capture', rid, i);
   log(s, `${name(s, i)} a ocupat ${REGIONS[rid].name}.`);
   s.picks.shift();
@@ -273,6 +279,7 @@ function resolveBattle(s, now) {
         const taken = ownedBy(s, def);
         taken.forEach((r) => {
           s.owner[r] = b.attacker;
+          s.value[r] = VALUE_WAR;
           event(s, 'capture', r, b.attacker);
         });
         event(s, 'crush', b.target, b.attacker);
@@ -283,15 +290,16 @@ function resolveBattle(s, now) {
       }
     } else {
       s.owner[b.target] = b.attacker;
+      s.value[b.target] = VALUE_WAR;
       event(s, 'capture', b.target, b.attacker);
       outcome = 'captured';
       text = `${name(s, b.attacker)} a cucerit ${REGIONS[b.target].name}!` + fast;
     }
   } else if (dOk) {
-    s.value[b.target] += DEFEND_BONUS;
+    if (s.mode !== 'conquest') s.value[b.target] += DEFEND_BONUS;
     event(s, 'defend', b.target, b.defender);
     outcome = 'defended';
-    text = `🛡️ ${name(s, b.defender)} a apărat ${REGIONS[b.target].name} (+${DEFEND_BONUS}).`;
+    text = `🛡️ ${name(s, b.defender)} a apărat ${REGIONS[b.target].name}${s.mode !== 'conquest' ? ` (+${DEFEND_BONUS})` : ''}.`;
   } else {
     outcome = 'none';
     text = 'Niciun răspuns corect — nimic nu se schimbă.';
@@ -357,11 +365,15 @@ function doTarget(s, i, rid, now) {
   nextChooser(s, now);
 }
 
-function giveLand(s, i, rid) {
+function giveLand(s, i, rid, value = VALUE_SPLIT) {
   const first = !landCount(s, i);
   s.owner[rid] = i;
+  s.value[rid] = value;
   event(s, 'capture', rid, i);
-  if (first && !s.capital[i]) makeCapital(s, i, rid);
+  if (first && !s.capital[i]) {
+    makeCapital(s, i, rid);
+    s.value[rid] = value;
+  }
 }
 
 function resolveConquest(s, now) {
@@ -372,7 +384,7 @@ function resolveConquest(s, now) {
     if (s.answers[i] && s.answers[i].c === s.q.answer) {
       const first = !landCount(s, i);
       giveLand(s, i, rid);
-      lines.push(`✅ ${name(s, i)} a cucerit ${REGIONS[rid].short}${first ? ' — capitala lui 🏰' : ''}`);
+      lines.push(`✅ ${name(s, i)} a ocupat ${REGIONS[rid].short} (+${VALUE_SPLIT})${first ? ' — capitala lui 🏰' : ''}`);
     } else lines.push(`❌ ${name(s, i)} a greșit — ${REGIONS[rid].short} rămâne liber`);
   });
   computeScores(s);
@@ -385,11 +397,12 @@ function resolveConquest(s, now) {
 function afterConquestResult(s, now, stuck = false) {
   const free = freeRegions(s).length;
   if (!free) return startWar(s, now);
-  if (!stuck && s.conq.round < s.conq.maxRounds) return startConquestRound(s, now);
+  // cât timp sunt cel puțin atâtea landuri libere câți jucători → încă o rundă (contează doar corectitudinea)
+  if (!stuck && free >= s.players.length && s.conq.round < s.conq.maxRounds) return startConquestRound(s, now);
   s.phase = 'tie-banner';
   s.q = null;
   s.result = null;
-  banner(s, 'Stichfrage', 'Departajare — cel mai rapid ia landurile rămase');
+  banner(s, 'Stichfrage', `${free} ${free === 1 ? 'land rămas' : 'landuri rămase'} — 1 întrebare = 1 land pentru cel mai rapid`);
   setTimer(s, BANNER_MS, now);
 }
 
@@ -415,8 +428,8 @@ function resolveTie(s, now) {
 }
 
 function doTiePick(s, i, rid, now) {
-  giveLand(s, i, rid);
-  log(s, `${name(s, i)} a câștigat departajarea: ${REGIONS[rid].name}.`);
+  giveLand(s, i, rid, VALUE_TIE);
+  log(s, `${name(s, i)} a câștigat departajarea: ${REGIONS[rid].name} (+${VALUE_TIE}).`);
   s.picks = [];
   computeScores(s);
   if (!freeRegions(s).length) return s.mode === 'conquest' ? startWar(s, now) : finish(s);

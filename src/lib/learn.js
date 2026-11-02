@@ -13,29 +13,79 @@ export const shuffle = (arr) => {
 const sample = (arr, n) => shuffle(arr).slice(0, n);
 
 // ---------------------------------------------------------------- pronunție
-let deVoice = null;
-function pickVoice() {
-  if (typeof speechSynthesis === 'undefined') return null;
-  const vs = speechSynthesis.getVoices();
-  deVoice = vs.find((v) => v.lang === 'de-DE' && /google|natural|premium/i.test(v.name)) || vs.find((v) => v.lang?.startsWith('de')) || null;
-  return deVoice;
+// Ordinea preferințelor: vocea aleasă în Profil → cea mai bună voce germană din
+// sistem (Microsoft „Natural”/„Online”, Google Deutsch…) → voce germană online.
+const hasSynth = typeof window !== 'undefined' && 'speechSynthesis' in window;
+const VOICE_KEY = 'germana-voice';
+export const ONLINE_VOICE = 'online';
+const isGerman = (v) => (v.lang || '').replace('_', '-').toLowerCase().startsWith('de');
+
+function score(v) {
+  const n = v.name.toLowerCase();
+  let s = 0;
+  if ((v.lang || '').replace('_', '-').toLowerCase() === 'de-de') s += 5;
+  if (/natural|online|neural|premium|enhanced/.test(n)) s += 20;
+  if (/google/.test(n)) s += 12;
+  if (/katja|conrad|amala|seraphina|florian|anna|petra|markus|yannick/.test(n)) s += 4;
+  if (!v.localService) s += 2;
+  return s;
 }
-if (typeof speechSynthesis !== 'undefined') {
-  pickVoice();
-  speechSynthesis.onvoiceschanged = pickVoice;
+export function germanVoices() {
+  if (!hasSynth) return [];
+  return speechSynthesis.getVoices().filter(isGerman).sort((a, b) => score(b) - score(a));
 }
-export function speak(text, rate = 0.9) {
+let voicesReady = null;
+function waitVoices() {
+  if (!hasSynth) return Promise.resolve();
+  if (speechSynthesis.getVoices().length) return Promise.resolve();
+  if (!voicesReady)
+    voicesReady = new Promise((res) => {
+      const t = setTimeout(res, 1200);
+      speechSynthesis.addEventListener('voiceschanged', () => { clearTimeout(t); res(); }, { once: true });
+      speechSynthesis.getVoices();
+    });
+  return voicesReady;
+}
+if (hasSynth) waitVoices();
+
+export function getVoicePref() {
+  try { return localStorage.getItem(VOICE_KEY) || ''; } catch { return ''; }
+}
+export function setVoicePref(name) {
+  try { localStorage.setItem(VOICE_KEY, name); } catch {}
+}
+
+let audio = null;
+function speakOnline(text, rate) {
   try {
-    if (typeof speechSynthesis === 'undefined') return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text.replace(/’/g, "'"));
-    u.lang = 'de-DE';
-    u.rate = rate;
-    if (deVoice || pickVoice()) u.voice = deVoice;
-    speechSynthesis.speak(u);
+    if (audio) audio.pause();
+    const slow = rate < 0.8 ? '&ttsspeed=0.3' : '';
+    audio = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&tl=de&client=tw-ob${slow}&q=${encodeURIComponent(text)}`);
+    audio.play().catch(() => {});
   } catch {}
 }
-export const canSpeak = typeof speechSynthesis !== 'undefined';
+
+export async function speak(text, rate = 0.9) {
+  text = text.replace(/’/g, "'");
+  const pref = getVoicePref();
+  if (pref === ONLINE_VOICE || !hasSynth) return speakOnline(text, rate);
+  await waitVoices();
+  const list = germanVoices();
+  const voice = list.find((v) => v.name === pref) || list[0];
+  if (!voice) return speakOnline(text, rate); // nicio voce germană în sistem
+  try {
+    if (audio) audio.pause();
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.voice = voice;
+    u.lang = voice.lang;
+    u.rate = rate;
+    speechSynthesis.speak(u);
+  } catch {
+    speakOnline(text, rate);
+  }
+}
+export const canSpeak = true;
 
 // ---------------------------------------------------------------- verificare text
 export function normalize(s) {

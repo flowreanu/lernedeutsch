@@ -1,5 +1,51 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api, isDemo } from '../lib/backend.js';
+import { germanVoices, getVoicePref, ONLINE_VOICE, setVoicePref, speak } from '../lib/learn.js';
+
+function VoicePicker() {
+  const [voices, setVoices] = useState([]);
+  const [pref, setPref] = useState(getVoicePref());
+  useEffect(() => {
+    const load = () => setVoices(germanVoices());
+    load();
+    const t = setTimeout(load, 1000);
+    if ('speechSynthesis' in window) speechSynthesis.addEventListener('voiceschanged', load);
+    return () => {
+      clearTimeout(t);
+      if ('speechSynthesis' in window) speechSynthesis.removeEventListener('voiceschanged', load);
+    };
+  }, []);
+  const choose = (v) => {
+    setPref(v);
+    setVoicePref(v);
+    setTimeout(() => speak('Hallo! Guten Morgen. Ich heiße Anna und ich komme aus Deutschland.'), 50);
+  };
+  return (
+    <div className="card">
+      <h3>Vocea germană</h3>
+      <p className="muted small">Alege vocea care sună cel mai natural. Apasă pe una ca s-o asculți.</p>
+      <div className="voices">
+        <button className={'voice' + (pref === '' ? ' on' : '')} onClick={() => choose('')}>
+          <b>Automat</b>
+          <small>{voices[0] ? voices[0].name : 'voce online'}</small>
+        </button>
+        {voices.map((v) => (
+          <button key={v.name} className={'voice' + (pref === v.name ? ' on' : '')} onClick={() => choose(v.name)}>
+            <b>{v.name.replace(/^Microsoft /, '').replace(/ - German.*$/, '')}</b>
+            <small>{v.lang}{v.localService ? ' · pe dispozitiv' : ' · online'}</small>
+          </button>
+        ))}
+        <button className={'voice' + (pref === ONLINE_VOICE ? ' on' : '')} onClick={() => choose(ONLINE_VOICE)}>
+          <b>Google Translate (online)</b>
+          <small>merge pe orice dispozitiv, cere internet</small>
+        </button>
+      </div>
+      {voices.length === 0 && (
+        <p className="muted small">Pe acest dispozitiv nu e instalată nicio voce germană, așa că se folosește vocea online. Pe Windows poți adăuga una din Setări → Oră și limbă → Vorbire → Adăugați voci → Deutsch.</p>
+      )}
+    </div>
+  );
+}
 
 export default function Profile({ profile, setProfile }) {
   const [name, setName] = useState(profile.display_name);
@@ -26,6 +72,7 @@ export default function Profile({ profile, setProfile }) {
         <div><b>{profile.streak || 0}</b><span>zile la rând</span></div>
         <div><b>{profile.games_won || 0}/{profile.games_played || 0}</b><span>jocuri câștigate</span></div>
       </div>
+      <VoicePicker />
       <div className="card">
         <h3>Instalează pe telefon</h3>
         {ios ? (

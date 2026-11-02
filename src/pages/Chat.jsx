@@ -9,6 +9,45 @@ const colorOf = (id) => PALETTE[[...String(id)].reduce((a, c) => a + c.charCodeA
 const hhmm = (d) => new Date(d).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
 const isMuted = (u) => u?.muted_until && new Date(u.muted_until) > new Date();
 
+const EMOJI = {
+  '😀': ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '🙂', '😉', '😍', '🥰', '😘', '😎', '🤓', '🤔', '🤨', '😐', '🙄', '😏', '😴', '😮', '😲', '😳', '🥺', '😢', '😭', '😤', '😡', '🤯', '🥳', '🤩', '😇', '🤗', '🤫', '🤭', '😬', '🫡', '🤪'],
+  '👍': ['👍', '👎', '👏', '🙌', '🙏', '💪', '👋', '🤝', '✌️', '🤞', '👌', '🤙', '👀', '🫶', '✍️', '🤷', '🙋', '🙈', '💯', '✅', '❌', '⭐', '🔥', '⚡', '💥', '🎉', '🎊', '🏆', '🥇', '🎯'],
+  '❤️': ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '💔', '💕', '💖', '💤', '💬', '💡', '❗', '❓'],
+  '🇩🇪': ['🇩🇪', '🇷🇴', '🥨', '🍺', '🌭', '🥖', '🧀', '☕', '🍰', '🏰', '⚔️', '🛡️', '👑', '🗺️', '🚆', '🚗', '🏠', '📚', '📝', '🎓', '🐻', '🦅', '⛰️', '🌲', '🎄', '⚽', '🎮', '🎵'],
+};
+
+function EmojiPicker({ onPick, onClose }) {
+  const [tab, setTab] = useState('😀');
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 12, scale: 0.95 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+      className="absolute bottom-[calc(100%+8px)] left-0 z-30 w-[min(340px,calc(100vw-32px))] rounded-2xl border border-white/10 bg-[#161b26]/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,.7)] backdrop-blur-xl"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="mb-2 flex gap-1 border-b border-white/10 pb-2">
+        {Object.keys(EMOJI).map((k) => (
+          <button key={k} type="button" onClick={() => setTab(k)} className={'flex-1 rounded-lg border-0 py-1.5 text-lg ' + (tab === k ? 'bg-[#f5c443]/20' : 'bg-transparent')}>
+            {k}
+          </button>
+        ))}
+        <button type="button" onClick={onClose} className="rounded-lg border-0 bg-transparent px-2 text-white/40">
+          ✕
+        </button>
+      </div>
+      <div className="grid max-h-[210px] grid-cols-8 gap-0.5 overflow-y-auto">
+        {EMOJI[tab].map((e) => (
+          <motion.button key={e} type="button" whileHover={{ scale: 1.25 }} whileTap={{ scale: 0.8 }} onClick={() => onPick(e)} className="grid h-10 place-items-center rounded-lg border-0 bg-transparent text-[22px] hover:bg-white/10">
+            {e}
+          </motion.button>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
 function RoleBadge({ role }) {
   if (role === 'admin') return <span className="rounded-md bg-[#f5c443]/20 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#f5c443]">👑 Admin</span>;
   if (role === 'moderator') return <span className="rounded-md bg-[#ef4b3f]/20 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#ff7a6e]">🛡️ Mod</span>;
@@ -170,6 +209,22 @@ export default function Chat({ profile }) {
   const [toast, setToast] = useState(null);
   const [version, setVersion] = useState(0);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const inputRef = useRef();
+  function insertEmoji(e) {
+    const el = inputRef.current;
+    const start = el?.selectionStart ?? text.length;
+    const end = el?.selectionEnd ?? text.length;
+    const next = (text.slice(0, start) + e + text.slice(end)).slice(0, 500);
+    setText(next);
+    sfx.tap();
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      const pos = start + e.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }
   const listRef = useRef();
   const people = useRef({});
   const lastSend = useRef(0);
@@ -221,6 +276,7 @@ export default function Chat({ profile }) {
     if (!body || muted || me.banned) return;
     if (Date.now() - lastSend.current < 1200) return setErr('Prea repede — așteaptă o secundă.');
     lastSend.current = Date.now();
+    setEmojiOpen(false);
     setErr(null);
     setText('');
     try {
@@ -284,7 +340,7 @@ export default function Chat({ profile }) {
         )}
       </div>
 
-      <div ref={listRef} className="glass mt-3 flex-1 overflow-y-auto px-3 py-3">
+      <div ref={listRef} onClick={() => setEmojiOpen(false)} className="glass mt-3 flex-1 overflow-y-auto px-3 py-3">
         {!msgs && !err && <p className="text-center text-white/45">Se încarcă…</p>}
         {msgs && !msgs.length && <p className="mt-10 text-center font-bold text-white/45">Niciun mesaj încă. Scrie primul! 👋</p>}
         <AnimatePresence initial={false}>
@@ -340,17 +396,28 @@ export default function Chat({ profile }) {
       </div>
 
       {err && <div className="msg bad !mb-0">{err}</div>}
-      <form onSubmit={send} className="my-3 flex items-end gap-2">
+      <form onSubmit={send} className="relative my-3 flex items-end gap-2">
         {muted || me.banned ? (
           <div className="glass flex-1 px-4 py-3 text-sm font-bold text-[#ffb0a8]">🔇 Ai mute până la {hhmm(me.muted_until)}. Poți citi, dar nu poți scrie.</div>
         ) : (
           <>
+            <AnimatePresence>{emojiOpen && <EmojiPicker onPick={insertEmoji} onClose={() => setEmojiOpen(false)} />}</AnimatePresence>
+            <motion.button
+              type="button"
+              {...tap}
+              onClick={() => setEmojiOpen((o) => !o)}
+              aria-label="Emoji"
+              className={'grid h-[52px] w-[52px] flex-none place-items-center rounded-2xl border text-2xl ' + (emojiOpen ? 'border-[#f5c443] bg-[#f5c443]/15' : 'border-white/15 bg-black/30')}
+            >
+              😊
+            </motion.button>
             <input
+              ref={inputRef}
               value={text}
               onChange={(e) => setText(e.target.value)}
               maxLength={500}
-              placeholder="Scrie un mesaj… (de preferat în germană 😄)"
-              className="flex-1 rounded-2xl border border-white/15 bg-black/30 px-4 py-3.5 font-bold text-white outline-none focus:border-[#f5c443] focus:shadow-[0_0_0_3px_rgba(245,196,67,.2)]"
+              placeholder="Scrie un mesaj…"
+              className="min-w-0 flex-1 rounded-2xl border border-white/15 bg-black/30 px-4 py-3.5 font-bold text-white outline-none focus:border-[#f5c443] focus:shadow-[0_0_0_3px_rgba(245,196,67,.2)]"
             />
             <motion.button {...tap} disabled={!text.trim()} className="btn !m-0 !w-auto !px-5" aria-label="Trimite">
               ➤

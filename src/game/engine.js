@@ -296,15 +296,16 @@ function resolveBattle(s, now) {
       outcome = 'captured';
       text = `${name(s, b.attacker)} a cucerit ${REGIONS[b.target].name}!` + fast;
     }
-  } else {
-    // atac respins: apărătorul primește +100 la punctajul TOTAL (landul își păstrează valoarea)
+  } else if (dOk) {
+    // atac respins cu răspuns corect: apărătorul primește +100 la punctajul TOTAL (landul își păstrează valoarea)
     s.bonus = s.bonus || [0, 0, 0];
     s.bonus[b.defender] = (s.bonus[b.defender] || 0) + DEFEND_BONUS;
     event(s, 'defend', b.target, b.defender);
     outcome = 'defended';
-    text = dOk
-      ? `🛡️ ${name(s, b.defender)} a respins atacul asupra ${REGIONS[b.target].short} și primește +${DEFEND_BONUS} puncte.`
-      : `🛡️ Atacul asupra ${REGIONS[b.target].short} a eșuat — ${name(s, b.defender)} primește +${DEFEND_BONUS} puncte.`;
+    text = `🛡️ ${name(s, b.defender)} a respins atacul asupra ${REGIONS[b.target].short} și primește +${DEFEND_BONUS} puncte.`;
+  } else {
+    outcome = 'none';
+    text = `Amândoi au greșit — ${REGIONS[b.target].short} rămâne la ${name(s, b.defender)}, fără puncte.`;
   }
   log(s, text);
   s.result = { outcome, correctAnswer: s.q.answer, answers: s.answers, text };

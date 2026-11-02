@@ -1,0 +1,12 @@
+{
+  "name": "Germana pentru incepatori absoluti",
+  "short_name": "Germana",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f1e7",
+  "theme_color": "#1d2a3a",
+  "lang": "ro",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

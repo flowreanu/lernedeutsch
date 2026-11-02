@@ -207,9 +207,17 @@ function makeSupabase() {
     async purgeMessages(userId) {
       return must(await sb.rpc('admin_purge_messages', { p_user: userId }));
     },
+    async friends() {
+      const groups = await this.myGroups();
+      const me = await uid();
+      const lists = await Promise.all(groups.map((g) => this.groupMembers(g.id)));
+      const map = {};
+      lists.flat().forEach((p) => p && p.id !== me && (map[p.id] = p));
+      return Object.values(map).sort((a, b) => a.display_name.localeCompare(b.display_name));
+    },
     subscribeChat({ onInsert, onDelete }) {
       const ch = sb
-        .channel('chat-global')
+        .channel('chat-' + Math.random().toString(36).slice(2))
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (p) => onInsert?.(p.new))
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat_messages' }, (p) => onDelete?.(p.old))
         .subscribe();
@@ -407,6 +415,10 @@ function makeDemo() {
       if (!msg || !canDeleteMessage(me, msg.user_id, author?.role)) throw new Error('Nu ai drepturi să ștergi acest mesaj.');
       set('chat', all.filter((m) => m.id !== id));
       chatSubs.forEach((h) => h.onDelete?.({ id }));
+    },
+    async friends() {
+      const groups = await this.myGroups();
+      return groups.length ? FAKE : [];
     },
     async purgeMessages(userId) {
       const all = get('chat', null) || (await this.listMessages()).map(({ name, role, ...m }) => m);

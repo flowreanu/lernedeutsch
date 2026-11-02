@@ -182,6 +182,82 @@ function AudioToggles() {
   );
 }
 
+function InviteDialog({ code, mode, onClose, onPosted }) {
+  const [friends, setFriends] = useState(null);
+  const [sel, setSel] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const base = `🎮 Hai la un joc de ${mode.de}! [${code}]`;
+  async function post(body) {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.sendMessage(body);
+      onPosted();
+    } catch (e) {
+      setErr(e.message);
+    }
+    setBusy(false);
+  }
+  useEffect(() => {
+    api
+      .friends()
+      .then((f) => {
+        setFriends(f);
+        if (!f.length) post(base); // fără prieteni → direct în chat
+      })
+      .catch(() => setFriends([]));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const chosen = (friends || []).filter((f) => sel[f.id]);
+  return (
+    <motion.div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+      <motion.div
+        initial={{ y: 60, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 60, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-[460px] rounded-t-3xl border border-white/10 bg-[#141924] p-5 pb-[calc(20px+env(safe-area-inset-bottom))] shadow-[0_-20px_60px_rgba(0,0,0,.7)] sm:rounded-3xl"
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="m-0">📨 Invită la joc</h2>
+          <button className="link !m-0" onClick={onClose}>Închide</button>
+        </div>
+        <p className="m-0 text-xs font-bold text-white/45">Invitația apare în chat; cei aleși primesc și o notificare.</p>
+        {friends === null && <p className="text-white/50">Se încarcă prietenii…</p>}
+        {friends && !friends.length && <p className="font-bold text-white/70">{busy ? 'Se postează în chat…' : err ? '' : 'N-ai încă colegi într-un grup — am postat invitația în chat. ✅'}</p>}
+        {friends && friends.length > 0 && (
+          <>
+            <div className="mt-3 max-h-[42vh] overflow-y-auto">
+              {friends.map((f, k) => (
+                <motion.button
+                  key={f.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: k * 0.04 }}
+                  onClick={() => setSel((x) => ({ ...x, [f.id]: !x[f.id] }))}
+                  className={'mb-2 flex w-full items-center gap-3 rounded-2xl border px-3 py-2.5 text-left ' + (sel[f.id] ? 'border-[#f5c443] bg-[#f5c443]/10' : 'border-white/10 bg-white/5')}
+                >
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-white/10 font-black">{(f.display_name || '?').slice(0, 1).toUpperCase()}</span>
+                  <span className="flex-1 font-extrabold">{f.display_name}</span>
+                  <span className={'grid h-6 w-6 place-items-center rounded-md border text-sm font-black ' + (sel[f.id] ? 'border-[#f5c443] bg-[#f5c443] text-[#2a1d00]' : 'border-white/25')}>{sel[f.id] ? '✓' : ''}</span>
+                </motion.button>
+              ))}
+            </div>
+            <motion.button {...tap} className="btn" disabled={busy || !chosen.length} onClick={() => post(`${base} — ${chosen.map((f) => '@' + f.display_name).join(', ')}`)}>
+              Trimite invitația ({chosen.length})
+            </motion.button>
+            <motion.button {...tap} className="btn ghost" disabled={busy} onClick={() => post(base)}>
+              💬 Postează pentru toți în chat
+            </motion.button>
+          </>
+        )}
+        {err && <div className="msg bad">{err}</div>}
+      </motion.div>
+    </motion.div>
+  );
+}
+
 export function ModeCard({ mode, selected, onClick, disabled }) {
   const m = MODES[mode];
   const isBlitz = mode === 'blitz';
@@ -215,6 +291,7 @@ export default function Game({ gameId, user, profile, refresh }) {
   const [err, setErr] = useState(null);
   const [myAnswer, setMyAnswer] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const stateRef = useRef(null);
   const localTimer = useRef({ seq: -1, deadline: 0, shownAt: 0, ms: 0 });
   const botTimers = useRef({});
@@ -484,7 +561,7 @@ export default function Game({ gameId, user, profile, refresh }) {
             <div className="text-[11px] font-extrabold uppercase tracking-widest text-white/45">Cod joc</div>
             <div className="code big">{game.code}</div>
           </div>
-          <motion.button {...tap} className="btn small" onClick={share}>{copied ? 'Copiat ✓' : 'Invită'}</motion.button>
+          <motion.button {...tap} className="btn small" onClick={() => setInviteOpen(true)}>{copied ? 'Trimis ✓' : 'Invită'}</motion.button>
         </div>
         <div className="grid gap-2">
           {[0, 1, 2].map((i) => (
@@ -492,8 +569,18 @@ export default function Game({ gameId, user, profile, refresh }) {
               {state.players[i] ? (
                 <>
                   <Avatar p={state.players[i]} size={30} />
-                  <b className="flex-1">{state.players[i].name}</b>
+                  <b className="flex-1">{state.players[i].name}{state.players[i].bot ? ' 🤖' : ''}</b>
                   <small className="font-bold text-white/45">{i === 0 ? 'gazdă' : COLORS[state.players[i].color].name}</small>
+                  {isHost && i > 0 && state.players[i].bot && (
+                    <motion.button
+                      {...tap}
+                      title="Scoate botul"
+                      onClick={() => hostApply(user.id, { type: 'kick', id: state.players[i].id })}
+                      className="grid h-8 w-8 place-items-center rounded-lg border border-[#ef4b3f]/40 bg-[#ef4b3f]/10 text-sm font-black text-[#ff7a6e]"
+                    >
+                      ✕
+                    </motion.button>
+                  )}
                 </>
               ) : (
                 <span className="py-1 text-sm font-bold text-white/35">Așteaptă un jucător…</span>
@@ -795,6 +882,20 @@ export default function Game({ gameId, user, profile, refresh }) {
   return (
     <div className="hexbg min-h-screen">
       <Banner banner={state.banner} />
+      <AnimatePresence>
+        {inviteOpen && (
+          <InviteDialog
+            code={game.code}
+            mode={mode}
+            onClose={() => setInviteOpen(false)}
+            onPosted={() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2500);
+              setTimeout(() => setInviteOpen(false), 900);
+            }}
+          />
+        )}
+      </AnimatePresence>
       <div className="mx-auto max-w-[620px] px-4 pb-10 pt-3">
         <div className="flex items-center justify-between">
           <motion.button {...tap} onClick={() => go('joc')} className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 text-lg">‹</motion.button>

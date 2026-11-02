@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { api, isDemo } from '../lib/backend.js';
 import { LESSONS } from '../data/lessons.js';
@@ -17,6 +17,11 @@ export default function GameLobby({ profile, progress, query }) {
   const [code, setCode] = useState(query.get('cod') || '');
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+
+  // venit dintr-o invitație (buton „Intră” din chat) → intră direct în joc
+  useEffect(() => {
+    if (query.get('cod')) join();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function create() {
     setBusy(true);

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api, canDeleteMessage } from '../lib/backend.js';
 import { sfx } from '../lib/fx.js';
+import MessageBody from '../components/MessageBody.jsx';
 
 const tap = { whileHover: { scale: 1.04 }, whileTap: { scale: 0.92 } };
 const PALETTE = ['#f5c443', '#ef4b3f', '#9aa0ad', '#ff9f43', '#e86a8f', '#5fb4ff', '#5fe08f'];
@@ -372,7 +373,7 @@ export default function Chat({ profile }) {
                       (mine ? 'rounded-tr-md bg-gradient-to-b from-[#ffd96b] to-[#f2b51f] text-[#2a1d00] shadow-[0_4px_14px_-4px_rgba(245,196,67,.5)]' : 'rounded-tl-md border border-white/10 bg-white/[.07] text-white')
                     }
                   >
-                    {m.body}
+                    <MessageBody text={m.body} me={me.display_name} mine={mine} />
                   </div>
                   {canDeleteMessage(me, m.user_id, m.role) && (
                     <motion.button

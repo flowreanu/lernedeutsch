@@ -471,6 +471,14 @@ export function applyMove(state, userId, move, now = Date.now()) {
       s.scores = s.players.map(() => 0);
       return s;
     }
+    case 'kick': {
+      // gazda scoate un jucător (ex. un bot) din lobby
+      const k = s.players.findIndex((p) => p.id === move.id);
+      if (s.status !== 'lobby' || i !== 0 || k <= 0) return state;
+      s.players.splice(k, 1);
+      s.scores = s.players.map(() => 0);
+      return s;
+    }
     case 'mode': {
       if (s.status !== 'lobby' || i !== 0 || !MODES[move.mode]) return state;
       s.mode = move.mode;

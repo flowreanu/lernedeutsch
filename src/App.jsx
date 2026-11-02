@@ -11,6 +11,7 @@ import GameLobby from './pages/GameLobby.jsx';
 import Game from './pages/Game.jsx';
 import Profile from './pages/Profile.jsx';
 import Chat from './pages/Chat.jsx';
+import InviteWatcher from './components/InviteWatcher.jsx';
 
 function useHashRoute() {
   const parse = () => {
@@ -171,6 +172,7 @@ export default function App() {
       {isDemo && !fullscreen && (
         <div className="demo-banner">Mod demo — progresul se salvează doar în acest browser.</div>
       )}
+      <InviteWatcher profile={profile} />
       <main className="main">{body}</main>
       {!fullscreen && <BottomNav page={page} />}
     </div>

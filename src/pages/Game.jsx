@@ -81,7 +81,10 @@ function StatsPanel({ state, me, activeSet }) {
               {landCount(state, i)}
             </motion.div>
             <div className="text-[10px] font-bold uppercase tracking-wider text-white/45">Landuri</div>
-            <div className="text-[11px] font-black text-white/70">{state.scores[i] || 0} p</div>
+            <div className="text-[11px] font-black text-white/70">
+              {state.scores[i] || 0} p
+              {(state.bonus || [])[i] > 0 && <span className="ml-1 text-[#9ff3c1]" title="Puncte din atacuri respinse">🛡️+{state.bonus[i]}</span>}
+            </div>
             <div className="text-[11px] tracking-wider text-[#f5c443]">{cap ? '♜'.repeat(cap[1]) + '·'.repeat(3 - cap[1]) : state.status === 'lobby' ? '♜♜♜' : '—'}</div>
           </motion.div>
         );

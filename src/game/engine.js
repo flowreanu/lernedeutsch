@@ -57,6 +57,7 @@ export function createState(host, maxLesson = 12, mode = 'blitz') {
     owner: Object.fromEntries(REGION_IDS.map((r) => [r, null])),
     value: Object.fromEntries(REGION_IDS.map((r) => [r, VALUE_SPLIT])),
     castle: {}, // rid -> turnuri rămase
+    bonus: [0, 0, 0], // puncte în plus la total (ex. +100 pentru un atac respins)
     capital: {}, // playerIndex -> rid
     q: null,
     answers: {},
@@ -95,7 +96,7 @@ export const landCount = (s, i) => ownedBy(s, i).length;
 const isCapital = (s, r) => !!s.castle[r];
 const adjacentToMine = (s, i, r) => ownedBy(s, i).some((m) => ADJ[m].includes(r));
 function computeScores(s) {
-  s.scores = s.players.map((_, i) => ownedBy(s, i).reduce((t, r) => t + s.value[r], 0));
+  s.scores = s.players.map((_, i) => ownedBy(s, i).reduce((t, r) => t + s.value[r], 0) + ((s.bonus || [])[i] || 0));
 }
 const name = (s, i) => s.players[i]?.name || '?';
 
@@ -295,14 +296,15 @@ function resolveBattle(s, now) {
       outcome = 'captured';
       text = `${name(s, b.attacker)} a cucerit ${REGIONS[b.target].name}!` + fast;
     }
-  } else if (dOk) {
-    if (s.mode !== 'conquest') s.value[b.target] += DEFEND_BONUS;
+  } else {
+    // atac respins: apărătorul primește +100 la punctajul TOTAL (landul își păstrează valoarea)
+    s.bonus = s.bonus || [0, 0, 0];
+    s.bonus[b.defender] = (s.bonus[b.defender] || 0) + DEFEND_BONUS;
     event(s, 'defend', b.target, b.defender);
     outcome = 'defended';
-    text = `🛡️ ${name(s, b.defender)} a apărat ${REGIONS[b.target].name}${s.mode !== 'conquest' ? ` (+${DEFEND_BONUS})` : ''}.`;
-  } else {
-    outcome = 'none';
-    text = 'Niciun răspuns corect — nimic nu se schimbă.';
+    text = dOk
+      ? `🛡️ ${name(s, b.defender)} a respins atacul asupra ${REGIONS[b.target].short} și primește +${DEFEND_BONUS} puncte.`
+      : `🛡️ Atacul asupra ${REGIONS[b.target].short} a eșuat — ${name(s, b.defender)} primește +${DEFEND_BONUS} puncte.`;
   }
   log(s, text);
   s.result = { outcome, correctAnswer: s.q.answer, answers: s.answers, text };

@@ -4,6 +4,8 @@ import { buildLesson, grade, newCard } from '../lib/learn.js';
 import { api } from '../lib/backend.js';
 import { go } from '../lib/nav.js';
 import Runner from './Runner.jsx';
+import Bruno from '../components/Bruno.jsx';
+import { confetti, sfx } from '../lib/fx.js';
 
 export default function Lesson({ lessonId, cards, refresh }) {
   const lesson = LESSON_BY_ID[lessonId];
@@ -16,6 +18,8 @@ export default function Lesson({ lessonId, cards, refresh }) {
 
   async function finish(r) {
     setResult(r);
+    sfx.finish();
+    if (r.score >= 60) confetti();
     setSaving(true);
     try {
       const updated = lesson.words.map((w) => {
@@ -39,10 +43,19 @@ export default function Lesson({ lessonId, cards, refresh }) {
     return (
       <div className="page center">
         <div className="done-card">
-          <div className="confetti">🎉</div>
+          <Bruno mood={result.score >= 60 ? 'cheer' : 'happy'} size={130} />
           <h1>Lecția {lesson.number} terminată!</h1>
-          <div className="big-score">{result.score}%</div>
-          <p>{result.correct} din {result.total} corecte din prima încercare{result.xp ? ` · +${result.xp} XP` : ''}</p>
+          <div className="done-stats">
+            <div className="stat-tile gold">
+              <small>XP câștigat</small>
+              <b>⭐ {result.xp ?? 20 + result.correct}</b>
+            </div>
+            <div className={'stat-tile ' + (result.score >= 80 ? 'green' : result.score >= 50 ? 'red' : 'black')}>
+              <small>Precizie</small>
+              <b>🎯 {result.score}%</b>
+            </div>
+          </div>
+          <p>{result.correct} din {result.total} corecte din prima încercare</p>
           <p className="muted">Cuvintele noi au intrat în recapitulare. Le vei revedea mâine, apoi la intervale tot mai mari.</p>
           {saving && <p className="muted">Se salvează…</p>}
           {saveErr && <p className="msg bad">Nu s-a putut salva: {saveErr}</p>}

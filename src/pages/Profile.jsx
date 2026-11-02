@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api, isDemo } from '../lib/backend.js';
+import { sfx, setSound, soundOn } from '../lib/fx.js';
 import { germanVoices, getVoicePref, ONLINE_VOICE, setVoicePref, speak } from '../lib/learn.js';
 
 function VoicePicker() {
@@ -47,6 +48,21 @@ function VoicePicker() {
   );
 }
 
+function SoundToggle() {
+  const [on, setOn] = useState(soundOn());
+  return (
+    <div className="card row-between">
+      <div>
+        <h3>Efecte sonore</h3>
+        <p className="muted small">Sunete scurte la răspuns corect/greșit și vibrație pe telefon.</p>
+      </div>
+      <button className={'switch' + (on ? ' on' : '')} onClick={() => { setSound(!on); setOn(!on); if (!on) setTimeout(sfx.correct, 50); }} aria-label="Efecte sonore">
+        <i />
+      </button>
+    </div>
+  );
+}
+
 export default function Profile({ profile, setProfile }) {
   const [name, setName] = useState(profile.display_name);
   const [saved, setSaved] = useState(false);
@@ -73,6 +89,7 @@ export default function Profile({ profile, setProfile }) {
         <div><b>{profile.games_won || 0}/{profile.games_played || 0}</b><span>jocuri câștigate</span></div>
       </div>
       <VoicePicker />
+      <SoundToggle />
       <div className="card">
         <h3>Instalează pe telefon</h3>
         {ios ? (

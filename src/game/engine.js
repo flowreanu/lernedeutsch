@@ -1,6 +1,6 @@
 // Logica jocului „Cucerește Germania”. Funcții pure: (stare, mutare) -> stare nouă.
 // Rulează doar pe telefonul gazdei (host); ceilalți trimit mutări și primesc starea.
-import { ADJ, CAPITALS, COLORS, REGION_IDS, REGIONS } from './map.js';
+import { ADJ, BASE_VALUE, CAPITALS, COLORS, REGION_IDS, REGIONS } from './map.js';
 import { gameQuestion } from '../lib/learn.js';
 
 export const Q_MS = 15000;
@@ -8,8 +8,8 @@ export const PICK_MS = 12000;
 export const ATTACK_MS = 15000;
 export const RESULT_MS = 3500;
 export const BATTLE_ROUNDS = 3;
-export const CAPITAL_VALUE = 300;
-export const REGION_VALUE = 200;
+export const CAPITAL_VALUE = 600;
+export const CASTLE_HP = 3;
 export const DEFEND_BONUS = 100;
 
 const clone = (s) => JSON.parse(JSON.stringify(s));
@@ -22,7 +22,8 @@ export function createState(host, maxLesson = 12) {
     maxLesson,
     players: [{ id: host.id, name: host.name, color: 0, bot: false }],
     owner: Object.fromEntries(REGION_IDS.map((r) => [r, null])),
-    value: Object.fromEntries(REGION_IDS.map((r) => [r, REGION_VALUE])),
+    value: { ...BASE_VALUE },
+    castle: {},
     q: null,
     answers: {},
     picks: [],
@@ -83,8 +84,9 @@ function startGame(s, now) {
     const cap = CAPITALS[i];
     s.owner[cap] = i;
     s.value[cap] = CAPITAL_VALUE;
+    s.castle[cap] = CASTLE_HP;
   });
-  log(s, 'Jocul a început! Fiecare are o capitală.');
+  log(s, 'Jocul a început! Fiecare are un castel cu 3 turnuri.');
   computeScores(s);
   newExpandQuestion(s, now);
 }
@@ -165,6 +167,7 @@ function doAttack(s, region, now) {
 }
 
 function resolveBattle(s, now) {
+  s.castle = s.castle || {};
   const b = s.battle;
   const A = s.answers[b.attacker];
   const D = s.answers[b.defender];
@@ -173,9 +176,22 @@ function resolveBattle(s, now) {
   let text;
   let outcome;
   if (aOk && (!dOk || A.t < D.t)) {
-    s.owner[b.target] = b.attacker;
-    outcome = 'captured';
-    text = `${s.players[b.attacker].name} a cucerit ${REGIONS[b.target].name}!` + (dOk ? ' (a fost mai rapid)' : '');
+    const fast = dOk ? ' (a fost mai rapid)' : '';
+    if (s.castle[b.target] > 1) {
+      s.castle[b.target] -= 1;
+      outcome = 'hit';
+      text = `${s.players[b.attacker].name} a dărâmat un turn din castelul lui ${s.players[b.defender].name}! Mai are ${s.castle[b.target]}.` + fast;
+    } else if (s.castle[b.target] === 1) {
+      delete s.castle[b.target];
+      const taken = REGION_IDS.filter((r) => s.owner[r] === b.defender);
+      taken.forEach((r) => (s.owner[r] = b.attacker));
+      outcome = 'captured';
+      text = `${s.players[b.attacker].name} a cucerit castelul și TOATE cele ${taken.length} teritorii ale lui ${s.players[b.defender].name}!`;
+    } else {
+      s.owner[b.target] = b.attacker;
+      outcome = 'captured';
+      text = `${s.players[b.attacker].name} a cucerit ${REGIONS[b.target].name}!` + fast;
+    }
   } else if (dOk) {
     s.value[b.target] += DEFEND_BONUS;
     outcome = 'defended';

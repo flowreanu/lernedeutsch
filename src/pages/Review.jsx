@@ -3,6 +3,8 @@ import { dueCards, grade, reviewExercise, shuffle } from '../lib/learn.js';
 import { api } from '../lib/backend.js';
 import { go } from '../lib/nav.js';
 import Runner from './Runner.jsx';
+import Bruno from '../components/Bruno.jsx';
+import { confetti, sfx } from '../lib/fx.js';
 
 export default function Review({ cards, refresh }) {
   const [mode, setMode] = useState(null); // null | 'due' | 'extra'
@@ -26,6 +28,8 @@ export default function Review({ cards, refresh }) {
     const updated = Object.values(graded.current).filter(Boolean);
     const xp = r.correct * 2;
     setResult({ ...r, xp });
+    sfx.finish();
+    confetti();
     try {
       await Promise.all([api.saveCards(updated), xp ? api.addXp(xp) : null]);
       await refresh();
@@ -41,10 +45,13 @@ export default function Review({ cards, refresh }) {
     return (
       <div className="page center">
         <div className="done-card">
-          <div className="confetti">💪</div>
+          <Bruno mood="cheer" size={130} />
           <h1>Recapitulare gata!</h1>
-          <div className="big-score">{result.score}%</div>
-          <p>{result.correct} din {result.total} corecte · +{result.xp} XP</p>
+          <div className="done-stats">
+            <div className="stat-tile gold"><small>XP câștigat</small><b>⭐ {result.xp}</b></div>
+            <div className={'stat-tile ' + (result.score >= 80 ? 'green' : 'red')}><small>Precizie</small><b>🎯 {result.score}%</b></div>
+          </div>
+          <p>{result.correct} din {result.total} corecte</p>
           {result.err && <p className="msg bad">{result.err}</p>}
           <button className="btn" onClick={() => go('')}>Înapoi acasă</button>
         </div>
@@ -53,6 +60,10 @@ export default function Review({ cards, refresh }) {
 
   return (
     <div className="page">
+      <div className="bubble-row">
+        <Bruno mood={due.length ? 'think' : 'happy'} size={80} />
+        <div className="bubble">{due.length ? 'Hai să repetăm! Câteva minute pe zi și nu mai uiți nimic.' : all.length ? 'Super, ești la zi! Mâine revin alte cuvinte.' : 'Fă prima lecție și apoi ne vedem aici.'}</div>
+      </div>
       <h1>Recapitulare</h1>
       <p className="muted">Repetiția spațiată: fiecare cuvânt revine exact când ești pe cale să-l uiți — după 1 zi, 3 zile, o săptămână, apoi tot mai rar. 10 minute pe zi fac minuni.</p>
       <div className="card review-card">

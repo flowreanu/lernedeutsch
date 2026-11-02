@@ -3,7 +3,9 @@ import { api, isDemo } from '../lib/backend.js';
 import { applyMove, answerers, botAction, BOT_NAMES, COLORS, playerIndex, tick, validPicks, validTargets } from '../game/engine.js';
 import { REGIONS } from '../game/map.js';
 import GermanyMap from '../game/GermanyMap.jsx';
+import SceneBg from '../game/SceneBg.jsx';
 import { go } from '../lib/nav.js';
+import { confetti, sfx } from '../lib/fx.js';
 
 function useNow(active) {
   const [, set] = useState(0);
@@ -144,11 +146,28 @@ export default function Game({ gameId, user, profile, refresh }) {
     }
   }, [state, gameId, isHost, user.id, refresh]);
 
+  // sunete la rezultat + confetti la victorie
+  const lastFx = useRef(null);
+  useEffect(() => {
+    if (!state) return;
+    const key = state.timer?.seq;
+    if (lastFx.current === key) return;
+    lastFx.current = key;
+    const i = playerIndex(state, user.id);
+    if ((state.phase === 'expand-result' || state.phase === 'battle-result') && state.result?.answers?.[i]) {
+      state.result.answers[i].c === state.result.correctAnswer ? sfx.correct() : sfx.wrong();
+    }
+    if (state.status === 'finished' && i >= 0) {
+      sfx.finish();
+      if (state.scores[i] === Math.max(...state.scores)) confetti(3500);
+    }
+  }, [state, user.id]);
+
   const playing = state?.status === 'playing';
   const now = useNow(playing);
 
   if (err) return <div className="page"><div className="msg bad">{err}</div><button className="btn" onClick={() => go('joc')}>Înapoi</button></div>;
-  if (!state) return <div className="page">Se încarcă jocul…</div>;
+  if (!state) return <div className="game-wrap"><SceneBg /><div className="page game"><p className="center-text">Se încarcă jocul…</p></div></div>;
 
   // cronometru local (independent de ceasul gazdei)
   if (state.timer.seq !== localTimer.current.seq) {
@@ -338,6 +357,8 @@ export default function Game({ gameId, user, profile, refresh }) {
 
   const panelFirst = ['expand-q', 'battle-q', 'expand-result', 'battle-result', 'finished'].includes(state.phase);
   return (
+    <div className="game-wrap">
+      <SceneBg />
     <div className="page game">
       <div className="game-top">
         <button className="link" onClick={() => go('joc')}>← Ieși</button>
@@ -351,9 +372,12 @@ export default function Game({ gameId, user, profile, refresh }) {
             (state.phase === 'battle-select' && state.battle.attacker === i) ||
             (state.q && ans.includes(i) && !state.answers[i]);
           return (
-            <div key={p.id} className={'pchip' + (active ? ' active' : '') + (i === me ? ' me' : '')} style={{ '--pc': COLORS[p.color].fill }}>
+            <div key={p.id} className={'pchip' + (active ? ' active' : '') + (i === me ? ' me' : '')} style={{ '--pc': COLORS[p.color].chip }}>
               <span className="pname">{p.name}{p.bot ? ' 🤖' : ''}</span>
               <span className="pscore">{state.scores[i] || 0}</span>
+              {state.status !== 'lobby' && (
+                <span className="ptowers">{Object.entries(state.castle || {}).filter(([r]) => state.owner[r] === i).map(([, hp]) => '♜'.repeat(hp)).join(' ') || '—'}</span>
+              )}
             </div>
           );
         })}
@@ -368,6 +392,8 @@ export default function Game({ gameId, user, profile, refresh }) {
           ))}
         </ul>
       )}
+      <p className="credit">Contururi hartă: @svg-maps/germany (CC BY 4.0)</p>
+    </div>
     </div>
   );
 }

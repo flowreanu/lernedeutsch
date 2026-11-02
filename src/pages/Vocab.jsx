@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { LESSONS } from '../data/lessons.js';
 import { normalize } from '../lib/learn.js';
 import { SpeakBtn, Word } from './Runner.jsx';
+import { pic } from '../data/pics.js';
 
 export default function Vocab({ cards }) {
   const [q, setQ] = useState('');
@@ -20,7 +21,8 @@ export default function Vocab({ cards }) {
             <h3>Lecția {l.number} · {l.title}</h3>
             {words.map((w) => (
               <div key={w.id} className="vocab-row">
-                <div>
+                <span className="vpic">{pic(w.de) || '·'}</span>
+                <div className="vtxt">
                   <Word de={w.de} className="vde" />
                   {w.plural && <small className="pl"> · pl. {w.plural}</small>}
                   <div className="vro">{w.ro}</div>

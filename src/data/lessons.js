@@ -1,10 +1,13 @@
 // Conținut A1 — explicații în română.
 // Cuvânt: [germană, română, articol|null, plural|null, exemplu DE, exemplu RO]
 // Gramatică: paragrafe; rândurile care încep cu "• " sunt liste; **text** = îngroșat.
+import { A2 } from './lessonsA2.js';
 
 export const LEVELS = [
   { id: 'A1.1', title: 'A1.1 — Primii pași', lessons: ['l01', 'l02', 'l03', 'l04', 'l05', 'l06'] },
   { id: 'A1.2', title: 'A1.2 — Viața de zi cu zi', lessons: ['l07', 'l08', 'l09', 'l10', 'l11', 'l12'] },
+  { id: 'A2.1', title: 'A2.1 — Povestim și ne descurcăm', lessons: ['l13', 'l14', 'l15', 'l16', 'l17', 'l18'] },
+  { id: 'A2.2', title: 'A2.2 — Muncă, oraș, examen', lessons: ['l19', 'l20', 'l21', 'l22', 'l23', 'l24'] },
 ];
 
 const L = [
@@ -536,7 +539,7 @@ const L = [
 ];
 
 // Normalizare: fiecare cuvânt primește id și câmpuri cu nume
-export const LESSONS = L.map((l, li) => ({
+export const LESSONS = [...L, ...A2].map((l, li) => ({
   ...l,
   number: li + 1,
   words: l.words.map(([de, ro, art, plural, exDe, exRo], i) => ({

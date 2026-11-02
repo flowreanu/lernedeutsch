@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { api, isDemo } from '../lib/backend.js';
+import Bruno from '../components/Bruno.jsx';
 
 const ERR = {
   'Invalid login credentials': 'E-mail sau parolă greșită.',
@@ -40,9 +41,9 @@ export default function Auth() {
   return (
     <div className="auth">
       <div className="auth-hero">
-        <div className="flag"><i /><i /><i /></div>
+        <Bruno mood="hello" size={120} />
         <h1>Germana pentru începători absoluți</h1>
-        <p>De la zero la A1, câte puțin în fiecare zi. Cu lecții în română, recapitulare inteligentă și un joc pe harta Germaniei cu colegii.</p>
+        <p>De la zero la A2, câte puțin în fiecare zi. Cu lecții în română, recapitulare inteligentă și un joc pe harta Germaniei cu colegii.</p>
       </div>
       <form className="card auth-card" onSubmit={submit}>
         {mode !== 'reset' && (

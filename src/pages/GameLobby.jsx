@@ -18,6 +18,22 @@ export default function GameLobby({ profile, progress, query }) {
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  // jocul meu activ (dacă am ieșit din pagina lui)
+  const [active, setActive] = useState(null);
+  useEffect(() => {
+    let id = null;
+    try {
+      id = localStorage.getItem('germana-active-game');
+    } catch {}
+    if (!id) return;
+    api
+      .getGame(id)
+      .then((g) => {
+        if (g && g.state?.status !== 'finished' && (g.state?.players || []).some((p) => p.id === profile.id)) setActive(g);
+      })
+      .catch(() => {});
+  }, [profile.id]);
+
   // venit dintr-o invitație (buton „Intră” din chat) → intră direct în joc
   useEffect(() => {
     if (query.get('cod')) join();
@@ -39,6 +55,11 @@ export default function GameLobby({ profile, progress, query }) {
     try {
       const g = await api.findGame(code);
       if (!g) throw new Error('Nu am găsit niciun joc cu acest cod.');
+      const st = g.state || {};
+      const inIt = (st.players || []).some((p) => p.id === profile.id);
+      if (st.status === 'finished') throw new Error(`Jocul ${g.code} s-a terminat deja. Creează unul nou!`);
+      if (st.status === 'playing' && !inIt) throw new Error(`Jocul ${g.code} a început deja fără tine.`);
+      if (st.status === 'lobby' && !inIt && (st.players || []).length >= 3) throw new Error(`Jocul ${g.code} e plin.`);
       go('joc/' + g.id);
     } catch (e2) {
       setMsg(e2.message);
@@ -60,6 +81,24 @@ export default function GameLobby({ profile, progress, query }) {
       <motion.p variants={rise} className="font-semibold text-white/60">
         Trei jucători, trei culori — <b className="text-[#f5c443]">auriu</b>, <b className="text-[#ff7a6e]">roșu</b> și <b className="text-[#b9bfcc]">negru</b>. Răspunde corect și cucerește landurile.
       </motion.p>
+
+      {active && (
+        <motion.button
+          variants={rise}
+          {...tap}
+          onClick={() => go('joc/' + active.id)}
+          className="mt-4 flex w-full items-center gap-3 rounded-2xl border border-[#ef4b3f]/60 bg-[#ef4b3f]/10 px-4 py-3 text-left shadow-red"
+        >
+          <span className="text-2xl">↩</span>
+          <span className="flex-1">
+            <b className="block">Revino la jocul tău</b>
+            <small className="font-bold text-white/55">
+              Cod {active.code} · {active.state.status === 'lobby' ? 'în lobby' : 'în desfășurare'}
+            </small>
+          </span>
+          <span className="text-2xl text-[#ff7a6e]">›</span>
+        </motion.button>
+      )}
 
       {query.get('cod') && (
         <motion.form variants={rise} className="card invite" onSubmit={join}>

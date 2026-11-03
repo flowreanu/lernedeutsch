@@ -306,7 +306,7 @@ function Thread({ me, otherId, onBack, onUser }) {
                       (mine ? 'rounded-tr-md bg-gradient-to-b from-[#ffd96b] to-[#f2b51f] text-[#2a1d00]' : 'rounded-tl-md border border-white/10 bg-white/[.07] text-white')
                     }
                   >
-                    <MessageBody text={m.body} me={me.display_name} mine={mine} />
+                    <MessageBody text={m.body} me={me.display_name} mine={mine} meId={me.id} />
                   </div>
                   {mine && i === a.length - 1 && <div className="mt-0.5 text-[10px] font-bold text-white/35">{m.read_at ? 'Văzut ✓✓' : 'Trimis ✓'}</div>}
                 </div>

@@ -149,7 +149,7 @@ function UsersPanel({ me, onClose, onPick, version }) {
   );
 }
 
-export default function Chat({ profile, query }) {
+export default function Chat({ profile, query, embedded, onClose }) {
   const social = useSocial();
   const [tab, setTab] = useState(query?.get('pm') ? 'private' : query?.get('tab') || 'general');
   const [pmUser, setPmUser] = useState(query?.get('pm') || null);
@@ -289,7 +289,7 @@ export default function Chat({ profile, query }) {
   }, [msgs]);
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-86px)] max-w-[600px] flex-col px-4 pt-4">
+    <div className={embedded ? 'flex h-full flex-col px-3 pt-3' : 'mx-auto flex h-[calc(100dvh-86px)] max-w-[600px] flex-col px-4 pt-4'}>
       <div className="flex items-center justify-between">
         <div>
           <div className="brand">
@@ -297,11 +297,18 @@ export default function Chat({ profile, query }) {
           </div>
           <div className="text-xs font-extrabold uppercase tracking-widest text-white/45">Chat · Sprecht Deutsch! 😉</div>
         </div>
-        {staff && (
-          <motion.button {...tap} onClick={() => setUsersOpen(true)} className="rounded-xl border border-[#f5c443]/40 bg-[#f5c443]/10 px-3 py-2 text-sm font-black text-[#f5c443]">
-            🛡️ Moderare
-          </motion.button>
-        )}
+        <div className="flex gap-2">
+          {staff && (
+            <motion.button {...tap} onClick={() => setUsersOpen(true)} className="rounded-xl border border-[#f5c443]/40 bg-[#f5c443]/10 px-3 py-2 text-sm font-black text-[#f5c443]">
+              🛡️{embedded ? '' : ' Moderare'}
+            </motion.button>
+          )}
+          {embedded && (
+            <motion.button {...tap} onClick={onClose} className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-black text-white">
+              Joc ›
+            </motion.button>
+          )}
+        </div>
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-1 rounded-2xl border border-white/10 bg-black/30 p-1">
@@ -358,7 +365,7 @@ export default function Chat({ profile, query }) {
                       (mine ? 'rounded-tr-md bg-gradient-to-b from-[#ffd96b] to-[#f2b51f] text-[#2a1d00] shadow-[0_4px_14px_-4px_rgba(245,196,67,.5)]' : 'rounded-tl-md border border-white/10 bg-white/[.07] text-white')
                     }
                   >
-                    <MessageBody text={m.body} me={me.display_name} mine={mine} />
+                    <MessageBody text={m.body} me={me.display_name} mine={mine} meId={me.id} />
                   </div>
                   {canDeleteMessage(me, m.user_id, m.role) && (
                     <motion.button

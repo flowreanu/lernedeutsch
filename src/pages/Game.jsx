@@ -20,6 +20,8 @@ import {
 import { ADJ, REGIONS } from '../game/map.js';
 import GermanyMap from '../game/GermanyMap.jsx';
 import { go } from '../lib/nav.js';
+import Chat from './Chat.jsx';
+import { useSocial } from '../lib/social.jsx';
 import { confetti, musicOn, setMusic, setSound, sfx, soundOn, startMusic, stopMusic } from '../lib/fx.js';
 
 function useNow(active) {
@@ -217,6 +219,10 @@ export default function Game({ gameId, user, profile, refresh }) {
   const [copied, setCopied] = useState(false);
   const [inviteState, setInviteState] = useState(null); // null | 'sending' | 'posted' | mesaj eroare
   const [codeCopied, setCodeCopied] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatNew, setChatNew] = useState(0);
+  const [leaveAsk, setLeaveAsk] = useState(false);
+  const social = useSocial();
   const stateRef = useRef(null);
   const localTimer = useRef({ seq: -1, deadline: 0, shownAt: 0, ms: 0 });
   const botTimers = useRef({});
@@ -360,6 +366,25 @@ export default function Game({ gameId, user, profile, refresh }) {
       } else sfx.finish();
     }
   }, [state, user.id]);
+
+  // ține minte jocul activ, ca să poți reveni la el din pagina Joc
+  useEffect(() => {
+    if (!state) return;
+    try {
+      if (state.status === 'finished') {
+        if (localStorage.getItem('germana-active-game') === gameId) localStorage.removeItem('germana-active-game');
+      } else if (playerIndex(state, user.id) >= 0) localStorage.setItem('germana-active-game', gameId);
+    } catch {}
+  }, [state?.status, state?.players?.length, gameId, user.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // mesaje noi în chatul general cât timp panoul de chat e închis
+  useEffect(() => {
+    if (chatOpen) {
+      setChatNew(0);
+      return;
+    }
+    return api.subscribeChat({ onInsert: (m) => m.user_id !== user.id && setChatNew((n) => n + 1) });
+  }, [chatOpen, user.id]);
 
   // muzica jocului
   useEffect(() => {
@@ -850,11 +875,63 @@ export default function Game({ gameId, user, profile, refresh }) {
   return (
     <div className="hexbg min-h-screen">
       <Banner banner={state.banner} />
+      <AnimatePresence>
+        {chatOpen && (
+          <>
+            <motion.div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setChatOpen(false)} />
+            <motion.div
+              className="fixed inset-y-0 right-0 z-50 w-full max-w-[460px] border-l border-white/10 bg-[#0f131b] pb-[env(safe-area-inset-bottom)] shadow-[-20px_0_60px_rgba(0,0,0,.6)]"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+            >
+              <Chat profile={profile} embedded onClose={() => setChatOpen(false)} />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {leaveAsk && (
+          <motion.div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setLeaveAsk(false)}>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} onClick={(e) => e.stopPropagation()} className="glass w-full max-w-[380px] !bg-[#141924] p-5 text-center">
+              <div className="text-4xl">🚪</div>
+              <h2 className="mt-2">Ieși din joc?</h2>
+              <p className="text-sm font-bold text-white/60">
+                {isHost ? 'Ești gazda: cât timp ești plecat, jocul stă pe loc. Poți reveni din pagina Joc → „Revino la jocul tău”.' : 'Jocul continuă fără tine. Poți reveni din pagina Joc → „Revino la jocul tău”.'}
+              </p>
+              <motion.button {...tap} className="btn" onClick={() => { setLeaveAsk(false); setChatOpen(true); }}>
+                💬 Deschide chatul (rămâi în joc)
+              </motion.button>
+              <motion.button {...tap} className="btn red" onClick={() => go('joc')}>
+                Ieși oricum
+              </motion.button>
+              <button className="link" onClick={() => setLeaveAsk(false)}>Rămân în joc</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="mx-auto max-w-[620px] px-4 pb-10 pt-3">
         <div className="flex items-center justify-between">
-          <motion.button {...tap} onClick={() => go('joc')} className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 text-lg">‹</motion.button>
+          <motion.button
+            {...tap}
+            onClick={() => (state.status === 'playing' && me >= 0 ? setLeaveAsk(true) : go('joc'))}
+            className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 text-lg"
+          >
+            ‹
+          </motion.button>
           <div className="brand">Lerne<span>Deutsch</span></div>
-          <AudioToggles />
+          <div className="flex gap-1.5">
+            <motion.button {...tap} onClick={() => setChatOpen(true)} title="Chat" className="relative grid h-10 w-10 place-items-center rounded-xl border border-white/15 bg-white/5 text-lg">
+              💬
+              {chatNew + (social?.badge || 0) > 0 && (
+                <motion.span key={chatNew + social.badge} initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute -right-1.5 -top-1.5 grid h-5 min-w-[20px] place-items-center rounded-full bg-[#ef4b3f] px-1 text-[10px] font-black text-white shadow-red">
+                  {Math.min(99, chatNew + social.badge)}
+                </motion.span>
+              )}
+            </motion.button>
+            <AudioToggles />
+          </div>
         </div>
         <div className="mt-2 flex justify-center">
           <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[.2em] text-white/60">

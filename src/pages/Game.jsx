@@ -12,6 +12,7 @@ import {
   landCount,
   MODES,
   playerIndex,
+  rematchState,
   tick,
   validConquestTargets,
   validPicks,
@@ -160,7 +161,6 @@ function StatsPanel({ state, me, activeSet }) {
             <div className="text-[10px] font-bold uppercase tracking-wider text-white/45">Landuri</div>
             <div className="text-[11px] font-black text-white/70">
               {state.scores[i] || 0} p
-              {(state.bonus || [])[i] > 0 && <span className="ml-1 text-[#9ff3c1]" title="Puncte din atacuri respinse">🛡️+{state.bonus[i]}</span>}
             </div>
             <div className="text-[11px] tracking-wider text-[#f5c443]">{cap ? '♜'.repeat(cap[1]) + '·'.repeat(3 - cap[1]) : state.status === 'lobby' ? '♜♜♜' : '—'}</div>
           </motion.div>
@@ -297,6 +297,7 @@ export default function Game({ gameId, user, profile, refresh }) {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatNew, setChatNew] = useState(0);
   const [leaveAsk, setLeaveAsk] = useState(false);
+  const [rematchBusy, setRematchBusy] = useState(false);
   const social = useSocial();
   const stateRef = useRef(null);
   const localTimer = useRef({ seq: -1, deadline: 0, shownAt: 0, ms: 0 });
@@ -441,6 +442,22 @@ export default function Game({ gameId, user, profile, refresh }) {
       } else sfx.finish();
     }
   }, [state, user.id]);
+
+  // revanșă: masă nouă cu aceleași setări; ceilalți primesc butonul „Intră”
+  async function startRematch() {
+    if (rematchBusy || !stateRef.current) return;
+    setRematchBusy(true);
+    try {
+      const g = await api.createGame(rematchState(stateRef.current, { id: user.id, name: profile.display_name }));
+      const mv = { type: 'rematch', id: g.id, code: g.code };
+      if (hostRef.current) hostApply(user.id, mv);
+      else await api.sendMove(gameId, mv);
+      go('joc/' + g.id);
+    } catch (e) {
+      setErr(e.message);
+      setRematchBusy(false);
+    }
+  }
 
   // jocul s-a terminat / a fost închis → nu mai ești „blocat” în el
   useEffect(() => {
@@ -986,9 +1003,24 @@ export default function Game({ gameId, user, profile, refresh }) {
             );
           })}
         </div>
-        {me >= 0 && <p className="mt-3 text-center text-xs font-bold text-white/45">Punctele au fost adăugate în clasament.</p>}
-        <motion.button {...tap} className="btn" onClick={() => go('joc')}>Joc nou</motion.button>
-        <motion.button {...tap} className="btn ghost" onClick={() => go('colegi')}>Clasament</motion.button>
+        {me >= 0 && <p className="mt-3 text-center text-xs font-bold text-white/45">Punctele (inclusiv cele din apărare) au fost adăugate în clasament.</p>}
+        {state.rematch ? (
+          <motion.button
+            {...tap}
+            className="btn"
+            onClick={() => go(state.rematch.by === me ? 'joc/' + state.rematch.id : 'joc?cod=' + state.rematch.code)}
+          >
+            {state.rematch.by === me ? '▶ Mergi la revanșă' : `🔁 ${nm(state.rematch.by)} propune revanșă — Intră`}
+          </motion.button>
+        ) : (
+          me >= 0 && (
+            <motion.button {...tap} className="btn" disabled={rematchBusy} onClick={startRematch}>
+              {rematchBusy ? 'Se pregătește…' : '🔁 Revanșă'}
+            </motion.button>
+          )
+        )}
+        <motion.button {...tap} className="btn ghost" onClick={() => go('joc')}>🎮 Joacă din nou</motion.button>
+        <motion.button {...tap} className="btn ghost" onClick={() => go('chat')}>🚪 Ieșire din joc</motion.button>
       </div>
     );
   }

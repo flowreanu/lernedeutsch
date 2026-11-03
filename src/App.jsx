@@ -187,7 +187,7 @@ export default function App() {
       body = <Colleagues {...ctx} />;
       break;
     case 'joc':
-      body = arg ? <Game {...ctx} gameId={arg} /> : <GameLobby {...ctx} />;
+      body = arg ? <Game key={arg} {...ctx} gameId={arg} /> : <GameLobby {...ctx} />;
       break;
     case 'chat':
       body = <Chat {...ctx} />;

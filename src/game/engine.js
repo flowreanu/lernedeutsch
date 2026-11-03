@@ -6,7 +6,7 @@
 //  2) Bătălii: pe rând, atacatorul alege un land vecin; duel atacator–apărător (corect + mai rapid).
 //     Capitala (Hauptstadtturm, 3 turnuri) se poate ataca doar dintr-un land vecin.
 //     Turn zdrobit → turul NU se termină: întrebare nouă, asaltul continuă. Capitală căzută →
-//     atacatorul ia tot teritoriul apărătorului și mai atacă o dată.
+//     atacatorul ia tot teritoriul apărătorului iar turul lui se încheie (fără atac bonus).
 //
 // EROBERUNGSKRIEG (Război de cucerire, varianta extinsă)
 //  1) Împărțirea: jucătorii aleg PE RÂND câte un land liber (nu același). Prima alegere: oriunde;
@@ -302,8 +302,13 @@ function resolveBattle(s, now) {
         event(s, 'crush', b.target, b.attacker);
         delete s.capital[def];
         outcome = 'captured';
-        text = `🏰 Capitala a căzut! ${name(s, b.attacker)} ia toate cele ${taken.length} landuri ale lui ${name(s, def)} și mai atacă o dată!`;
-        b.next = 'bonus';
+        const rivals = s.players.filter((_, k) => k !== b.attacker && landCount(s, k) > 0).length;
+        if (rivals === 0) {
+          text = `🏰 Capitala a căzut! ${name(s, b.attacker)} ia toate cele ${taken.length} landuri ale lui ${name(s, def)} și cucerește toată Germania!`;
+          b.next = 'end';
+        } else {
+          text = `🏰 Capitala a căzut! ${name(s, b.attacker)} ia toate cele ${taken.length} landuri ale lui ${name(s, def)}. Atacul s-a încheiat.`;
+        }
       }
     } else {
       s.owner[b.target] = b.attacker;
@@ -339,11 +344,7 @@ function afterBattleResult(s, now) {
     newQuestion(s, 'battle-q', Q_MS, now);
     return;
   }
-  if (b.next === 'bonus' && validTargets(s, b.attacker).length) {
-    banner(s, 'Bonus!', `${name(s, b.attacker)} mai atacă o dată`);
-    selectPhase(s, now);
-    return;
-  }
+  if (b.next === 'end') return finish(s);
   b.turn++;
   beginTurn(s, now);
 }
@@ -505,6 +506,12 @@ export function applyMove(state, userId, move, now = Date.now()) {
       s.scores = s.players.map(() => 0);
       return s;
     }
+    case 'rematch': {
+      // după final: primul care propune revanșa o fixează; ceilalți o văd
+      if (s.status !== 'finished' || i < 0 || s.rematch || !move.id || !move.code) return state;
+      s.rematch = { id: String(move.id), code: String(move.code).slice(0, 8), by: i };
+      return s;
+    }
     case 'visibility': {
       if (s.status !== 'lobby' || i !== 0 || !['public', 'private'].includes(move.visibility)) return state;
       s.visibility = move.visibility;
@@ -656,4 +663,13 @@ export function botAction(s, i) {
 }
 
 export const BOT_NAMES = ['Stefan', 'Katrin'];
+
+// masă nouă cu aceleași setări (și aceiași boți) pentru revanșă
+export function rematchState(old, me) {
+  let s = createState(me, old.maxLesson, old.mode, old.visibility);
+  old.players.filter((p) => p.bot).forEach((p, n) => {
+    s = applyMove(s, 'bot-' + Math.random().toString(36).slice(2, 7), { type: 'join', name: p.name || BOT_NAMES[n] || 'Bot', bot: true });
+  });
+  return s;
+}
 export { COLORS };

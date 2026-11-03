@@ -46,10 +46,11 @@ export const BLITZ_CAPITALS = ['W', 'B', 'Y'];
 const clone = (s) => JSON.parse(JSON.stringify(s));
 const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-export function createState(host, maxLesson = 12, mode = 'blitz') {
+export function createState(host, maxLesson = 12, mode = 'blitz', visibility = 'public') {
   return {
     v: 2,
     mode,
+    visibility, // 'public' (apare în lista meselor) | 'private' (doar cu cod)
     status: 'lobby',
     phase: null,
     maxLesson,
@@ -477,6 +478,30 @@ export function applyMove(state, userId, move, now = Date.now()) {
       if (s.status !== 'lobby' || i !== 0 || k <= 0) return state;
       s.players.splice(k, 1);
       s.scores = s.players.map(() => 0);
+      return s;
+    }
+    case 'visibility': {
+      if (s.status !== 'lobby' || i !== 0 || !['public', 'private'].includes(move.visibility)) return state;
+      s.visibility = move.visibility;
+      return s;
+    }
+    case 'close': {
+      // gazda închide masa (din lobby sau din joc) — jocul se oprește pentru toți, fără punctaj
+      if (i !== 0 || !['lobby', 'playing'].includes(s.status)) return state;
+      s.status = 'closed';
+      s.phase = 'closed';
+      s.q = null;
+      s.deadline = 0;
+      s.timer = { seq: s.timer.seq + 1, ms: 0 };
+      log(s, `${name(s, 0)} a închis masa.`);
+      return s;
+    }
+    case 'forfeit': {
+      // un jucător abandonează în timpul jocului: un bot îi ia locul
+      if (s.status !== 'playing' || i <= 0 || s.players[i].left) return state;
+      s.players[i].bot = true;
+      s.players[i].left = true;
+      log(s, `${name(s, i)} a abandonat — un bot îi ia locul.`);
       return s;
     }
     case 'mode': {

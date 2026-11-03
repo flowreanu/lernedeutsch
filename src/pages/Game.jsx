@@ -19,7 +19,7 @@ import {
 } from '../game/engine.js';
 import { ADJ, REGIONS } from '../game/map.js';
 import GermanyMap from '../game/GermanyMap.jsx';
-import { go } from '../lib/nav.js';
+import { go, markLeft } from '../lib/nav.js';
 import Chat from './Chat.jsx';
 import { useSocial } from '../lib/social.jsx';
 import { confetti, musicOn, setMusic, setSound, sfx, soundOn, startMusic, stopMusic } from '../lib/fx.js';
@@ -78,6 +78,7 @@ function StatsPanel({ state, me, activeSet }) {
             <div className={'mt-1 w-full truncate text-xs font-extrabold ' + (i === me ? 'text-[#f5c443]' : 'text-white/85')}>
               {p.name}
               {i === me ? ' (tu)' : ''}
+              {p.left ? ' 🏳️' : ''}
             </div>
             <motion.div key={landCount(state, i)} initial={{ scale: 1.6, color: '#fff' }} animate={{ scale: 1, color: p.color === 2 ? c.light : c.fill }} className="text-2xl font-black leading-none">
               {landCount(state, i)}
@@ -367,15 +368,20 @@ export default function Game({ gameId, user, profile, refresh }) {
     }
   }, [state, user.id]);
 
-  // ține minte jocul activ, ca să poți reveni la el din pagina Joc
+  // jocul s-a terminat / a fost închis → nu mai ești „blocat” în el
   useEffect(() => {
-    if (!state) return;
-    try {
-      if (state.status === 'finished') {
-        if (localStorage.getItem('germana-active-game') === gameId) localStorage.removeItem('germana-active-game');
-      } else if (playerIndex(state, user.id) >= 0) localStorage.setItem('germana-active-game', gameId);
-    } catch {}
-  }, [state?.status, state?.players?.length, gameId, user.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (state && (state.status === 'finished' || state.status === 'closed')) markLeft(gameId);
+  }, [state?.status, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // gazda: semnal de viață în lobby (masa rămâne vizibilă în lista meselor publice)
+  useEffect(() => {
+    if (!isHost || state?.status !== 'lobby') return;
+    const iv = setInterval(() => {
+      const st = stateRef.current;
+      if (st?.status === 'lobby') commit({ ...st, hb: Date.now() });
+    }, 60000);
+    return () => clearInterval(iv);
+  }, [isHost, state?.status, commit]);
 
   // mesaje noi în chatul general cât timp panoul de chat e închis
   useEffect(() => {
@@ -498,6 +504,24 @@ export default function Game({ gameId, user, profile, refresh }) {
     } catch {}
   }
 
+  // ieșirea din masă: doar explicit
+  const leaveInfo =
+    state.status === 'lobby'
+      ? isHost
+        ? { title: 'Închizi masa?', text: 'Masa se închide pentru toți cei care au intrat.', btn: 'Închide masa', move: { type: 'close' } }
+        : { title: 'Părăsești masa?', text: 'Îți eliberezi locul; poți intra din nou cât timp jocul nu a început.', btn: 'Părăsește masa', move: { type: 'leave' } }
+      : state.status === 'playing' && me >= 0
+      ? isHost
+        ? { title: 'Închizi jocul?', text: 'Ești gazda: jocul se oprește pentru toți și nu se mai acordă puncte.', btn: 'Închide jocul pentru toți', move: { type: 'close' } }
+        : { title: 'Abandonezi jocul?', text: 'Un bot îți ia locul până la final. Nu primești puncte pentru acest joc.', btn: 'Abandonează', move: { type: 'forfeit' } }
+      : null;
+  function leaveNow() {
+    if (leaveInfo) send(leaveInfo.move);
+    markLeft(gameId);
+    setLeaveAsk(false);
+    setTimeout(() => go('joc'), 250);
+  }
+
   // ---------------------------------------------------------------- panouri
   const panelKey = state.q && (/-q$/.test(ph || '') || /-result$/.test(ph || '')) ? `q-${state.q.id}` : `${ph}-${state.timer.seq}`;
   let panel = null;
@@ -580,6 +604,30 @@ export default function Game({ gameId, user, profile, refresh }) {
               )}
             </motion.div>
           ))}
+        </div>
+        <div className="text-[11px] font-extrabold uppercase tracking-widest text-white/45">Masă</div>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            ['public', '🌍 Publică', 'apare în lista meselor'],
+            ['private', '🔒 Privată', 'doar cu cod / invitație'],
+          ].map(([v, label, sub]) => {
+            const on = (state.visibility || 'public') === v;
+            return (
+              <motion.button
+                key={v}
+                {...(isHost ? tap : {})}
+                disabled={!isHost}
+                onClick={() => isHost && send({ type: 'visibility', visibility: v })}
+                className={'flex items-center gap-2 rounded-2xl border px-3 py-2.5 text-left ' + (on ? 'border-[#f5c443] bg-[#f5c443]/10' : 'border-white/10 bg-white/5') + (!isHost && !on ? ' opacity-40' : '')}
+              >
+                <span className={'grid h-5 w-5 flex-none place-items-center rounded-full border-2 ' + (on ? 'border-[#f5c443]' : 'border-white/30')}>{on && <span className="h-2.5 w-2.5 rounded-full bg-[#f5c443]" />}</span>
+                <span>
+                  <b className="block text-sm">{label}</b>
+                  <small className="font-bold text-white/45">{sub}</small>
+                </span>
+              </motion.button>
+            );
+          })}
         </div>
         <div className="text-[11px] font-extrabold uppercase tracking-widest text-white/45">Modul de joc</div>
         <div className="grid gap-2">
@@ -831,6 +879,16 @@ export default function Game({ gameId, user, profile, refresh }) {
         <p className="m-0 font-bold text-white/60">{freeRegions(state).length} {freeRegions(state).length === 1 ? 'land liber' : 'landuri libere'} · 1 întrebare = 1 land pentru cel mai rapid răspuns corect (+300 p)</p>
       </div>
     );
+  } else if (state.status === 'closed') {
+    panelOnTop = true;
+    panel = (
+      <div className="text-center">
+        <div className="text-4xl">🔒</div>
+        <h2 className="mt-2">Masa a fost închisă</h2>
+        <p className="font-bold text-white/55">Gazda a închis jocul. Nu s-au acordat puncte.</p>
+        <motion.button {...tap} className="btn" onClick={() => go('joc')}>Înapoi la mese</motion.button>
+      </div>
+    );
   } else if (state.status === 'finished') {
     panelOnTop = true;
     const order = state.players.map((p, i) => ({ p, i, s: state.scores[i] })).sort((a, b) => b.s - a.s);
@@ -896,15 +954,13 @@ export default function Game({ gameId, user, profile, refresh }) {
           <motion.div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setLeaveAsk(false)}>
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} onClick={(e) => e.stopPropagation()} className="glass w-full max-w-[380px] !bg-[#141924] p-5 text-center">
               <div className="text-4xl">🚪</div>
-              <h2 className="mt-2">Ieși din joc?</h2>
-              <p className="text-sm font-bold text-white/60">
-                {isHost ? 'Ești gazda: cât timp ești plecat, jocul stă pe loc. Poți reveni din pagina Joc → „Revino la jocul tău”.' : 'Jocul continuă fără tine. Poți reveni din pagina Joc → „Revino la jocul tău”.'}
-              </p>
+              <h2 className="mt-2">{leaveInfo?.title}</h2>
+              <p className="text-sm font-bold text-white/60">{leaveInfo?.text}</p>
               <motion.button {...tap} className="btn" onClick={() => { setLeaveAsk(false); setChatOpen(true); }}>
-                💬 Deschide chatul (rămâi în joc)
+                💬 Vreau doar chatul (rămân aici)
               </motion.button>
-              <motion.button {...tap} className="btn red" onClick={() => go('joc')}>
-                Ieși oricum
+              <motion.button {...tap} className="btn red" onClick={leaveNow}>
+                {leaveInfo?.btn}
               </motion.button>
               <button className="link" onClick={() => setLeaveAsk(false)}>Rămân în joc</button>
             </motion.div>
@@ -915,10 +971,11 @@ export default function Game({ gameId, user, profile, refresh }) {
         <div className="flex items-center justify-between">
           <motion.button
             {...tap}
-            onClick={() => (state.status === 'playing' && me >= 0 ? setLeaveAsk(true) : go('joc'))}
+            onClick={() => (leaveInfo && me >= 0 ? setLeaveAsk(true) : (markLeft(gameId), go('joc')))}
+            title={leaveInfo ? leaveInfo.btn : 'Înapoi'}
             className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 text-lg"
           >
-            ‹
+            {leaveInfo && me >= 0 ? '🚪' : '‹'}
           </motion.button>
           <div className="brand">Lerne<span>Deutsch</span></div>
           <div className="flex gap-1.5">

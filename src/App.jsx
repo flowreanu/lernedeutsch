@@ -13,6 +13,7 @@ import Profile from './pages/Profile.jsx';
 import Chat from './pages/Chat.jsx';
 import InviteWatcher from './components/InviteWatcher.jsx';
 import { SocialProvider, useSocial } from './lib/social.jsx';
+import { go, isLeft } from './lib/nav.js';
 
 function useHashRoute() {
   const parse = () => {
@@ -113,6 +114,30 @@ export default function App() {
       setCards({});
     }
   }, [user, refresh]);
+
+  // Cât timp sunt la o masă (lobby sau joc), aplicația mă ține în joc; chatul e în panoul din joc.
+  const [lock, setLock] = useState(null);
+  const routeKey = route.parts.join('/');
+  useEffect(() => {
+    if (!profile) return;
+    let alive = true;
+    const check = () =>
+      api
+        .myActiveGame()
+        .then((g) => alive && setLock(g && !isLeft(g.id) ? g : null))
+        .catch(() => {});
+    check();
+    const iv = setInterval(check, 15000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [profile?.id, routeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!lock) return;
+    if (isLeft(lock.id)) return setLock(null);
+    if (!(route.parts[0] === 'joc' && route.parts[1] === lock.id)) go('joc/' + lock.id);
+  }, [lock, routeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (user === undefined) return <div className="splash">Se încarcă…</div>;
   if (!user) return <Auth />;

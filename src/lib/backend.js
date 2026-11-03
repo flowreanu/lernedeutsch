@@ -157,6 +157,36 @@ function makeSupabase() {
     async findGame(code) {
       return must(await sb.from('games').select('*').eq('code', code.trim().toUpperCase()).maybeSingle());
     },
+    // masa în care sunt acum (lobby sau joc în desfășurare), dacă există
+    async myActiveGame() {
+      const me = await uid();
+      const since = new Date(Date.now() - 15 * 60000).toISOString();
+      const rows = must(
+        await sb
+          .from('games')
+          .select('id,code,state,updated_at')
+          .contains('state', { players: [{ id: me }] })
+          .filter('state->>status', 'in', '("lobby","playing")')
+          .gt('updated_at', since)
+          .order('created_at', { ascending: false })
+          .limit(5)
+      );
+      return rows.find((g) => g.state.players.some((p) => p.id === me && !p.left)) || null;
+    },
+    // mesele publice active
+    async listPublicGames() {
+      const since = new Date(Date.now() - 4 * 60000).toISOString();
+      return must(
+        await sb
+          .from('games')
+          .select('id,code,state,created_at,updated_at')
+          .filter('state->>visibility', 'eq', 'public')
+          .filter('state->>status', 'in', '("lobby","playing")')
+          .gt('updated_at', since)
+          .order('created_at', { ascending: false })
+          .limit(30)
+      );
+    },
     async getGame(id) {
       return must(await sb.from('games').select('*').eq('id', id).maybeSingle());
     },
@@ -424,6 +454,19 @@ function makeDemo() {
     },
     async findGame(code) {
       return Object.values(games).find((g) => g.code === code.toUpperCase()) || null;
+    },
+    async myActiveGame() {
+      return Object.values(games).reverse().find((g) => ['lobby', 'playing'].includes(g.state.status) && g.state.players.some((p) => p.id === 'me' && !p.left)) || null;
+    },
+    async listPublicGames() {
+      const mine = Object.values(games).filter((g) => g.state.visibility === 'public' && ['lobby', 'playing'].includes(g.state.status));
+      const fake = {
+        id: 'demo-fake',
+        code: 'DEMO1',
+        created_at: new Date().toISOString(),
+        state: { status: 'playing', mode: 'conquest', visibility: 'public', maxLesson: 6, players: [{ id: 'f1', name: 'Ana (exemplu)', color: 0 }, { id: 'f2', name: 'Mihai (exemplu)', color: 1 }, { id: 'f3', name: 'Ioana (exemplu)', color: 2 }] },
+      };
+      return [...mine.reverse(), fake];
     },
     async getGame(id) {
       return games[id] || null;

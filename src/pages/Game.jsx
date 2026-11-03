@@ -55,6 +55,80 @@ function Avatar({ p, size = 40 }) {
   );
 }
 
+// Formatează timpii: dacă doi par egali, adaugă zecimale (până la ms)
+export function fmtTimes(ts) {
+  const vals = ts.filter((t) => typeof t === 'number');
+  for (let d = 1; d <= 3; d++) {
+    const f = vals.map((t) => (t / 1000).toFixed(d));
+    if (new Set(f).size === f.length || d === 3) return (t) => `${(t / 1000).toFixed(d)}s`;
+  }
+}
+
+// Banda cu ordinea pe runde, în culorile jucătorilor
+function TurnOrder({ state }) {
+  const n = state.players.length;
+  const ph = state.phase;
+  let rows = null;
+  let cur = -1;
+  let curTurn = -1;
+  const conqPhases = ['conq-target', 'ready', 'conq-q', 'conq-result'];
+  if (state.conq && ph === 'start-pick') {
+    rows = [{ label: 'Capitale', order: state.conq.order }];
+    cur = 0;
+    curTurn = state.conq.turn;
+  } else if (state.conq && conqPhases.includes(ph) && (ph !== 'ready' || state.pending?.phase === 'conq-q')) {
+    const r = state.conq.round;
+    const base = state.turnBase || state.players.map((_, k) => k);
+    const rot = (k) => base.map((_, i) => base[(((i - k) % n) + n) % n]);
+    rows = [r - 1, r, r + 1].filter((x) => x >= 1 && x <= state.conq.maxRounds).map((x) => ({ label: `Runda ${x}`, order: rot(x) }));
+    cur = rows.findIndex((x) => x.label === `Runda ${r}`);
+    curTurn = ph === 'conq-target' ? state.conq.turn : n;
+  } else if (state.battle && (['battle-select', 'battle-q', 'battle-result'].includes(ph) || (ph === 'ready' && state.pending?.phase === 'battle-q'))) {
+    const b = state.battle;
+    if (!b) return null;
+    const total = Math.ceil(b.order.length / n);
+    const r = Math.floor(b.turn / n);
+    rows = [r - 1, r, r + 1].filter((x) => x >= 0 && x < total).map((x) => ({ label: `Runda ${x + 1}`, order: b.order.slice(x * n, x * n + n), idx: x }));
+    cur = rows.findIndex((x) => x.idx === r);
+    curTurn = b.turn % n;
+  }
+  if (!rows || !rows.length) return null;
+  return (
+    <div className="mt-2 flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/30 px-3 py-2 backdrop-blur">
+      {rows.map((row, ri) => {
+        const active = ri === cur;
+        return (
+          <div key={row.label} className={'flex items-center gap-2 transition-opacity ' + (active ? 'opacity-100' : 'opacity-40')}>
+            <span className={'w-20 shrink-0 text-[10px] font-black uppercase tracking-widest ' + (active ? 'text-[#f5c443]' : 'text-white/60')}>{row.label}</span>
+            <div className="flex flex-wrap items-center gap-1">
+              {row.order.map((k, j) => {
+                const p = state.players[k];
+                const c = COLORS[p?.color ?? 0];
+                const now = active && j === curTurn;
+                const done = active && j < curTurn;
+                return (
+                  <span key={j} className="flex items-center gap-1">
+                    {j > 0 && <span className="text-[10px] text-white/30">›</span>}
+                    <motion.span
+                      animate={now ? { scale: [1, 1.08, 1] } : { scale: 1 }}
+                      transition={now ? { repeat: Infinity, duration: 1.2 } : {}}
+                      className={'flex items-center gap-1 rounded-full py-0.5 pl-0.5 pr-2 text-[11px] font-black ' + (now ? 'ring-2 ring-white/70' : '') + (done ? ' opacity-50' : '')}
+                      style={{ background: `${c.fill}33`, color: p?.color === 2 ? c.light : c.fill }}
+                    >
+                      <span className="h-3.5 w-3.5 rounded-full" style={{ background: c.fill, boxShadow: `0 0 6px ${c.glow}`, border: '1px solid rgba(255,255,255,.35)' }} />
+                      {p?.name || '?'}
+                    </motion.span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // Panou cu statistica landurilor cucerite
 function StatsPanel({ state, me, activeSet }) {
   const order = state.players.map((p, i) => ({ p, i })).sort((a, b) => landCount(state, b.i) - landCount(state, a.i));
@@ -777,7 +851,7 @@ export default function Game({ gameId, user, profile, refresh }) {
         {reveal ? (
           <>
             <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
-              {(qph === 'battle-q' ? [state.battle.attacker, state.battle.defender] : qph === 'conq-q' ? Object.keys(state.conq?.targets || {}).map(Number).filter((k) => state.conq.targets[k]) : state.players.map((_, k) => k))
+              {(() => { const fmt = fmtTimes(Object.values(ansMap).filter(Boolean).map((a) => a.t)); return (qph === 'battle-q' ? [state.battle.attacker, state.battle.defender] : qph === 'conq-q' ? Object.keys(state.conq?.targets || {}).map(Number).filter((k) => state.conq.targets[k]) : state.players.map((_, k) => k))
                 .map((k) => ({ k, a: ansMap[k] }))
                 .sort((x, y) => (x.a ? x.a.t : 1e9) - (y.a ? y.a.t : 1e9))
                 .map(({ k, a }, n) => {
@@ -797,10 +871,10 @@ export default function Game({ gameId, user, profile, refresh }) {
                         {(nm(k) || '?').slice(0, 1)}
                       </span>
                       {nm(k)}
-                      <span className="font-bold opacity-75">{!a ? 'fără răspuns' : speed ? `${(a.t / 1000).toFixed(1)}s` : ''}</span>
+                      <span className="font-bold opacity-75">{!a ? 'fără răspuns' : speed ? fmt(a.t) : ''}</span>
                     </motion.span>
                   );
-                })}
+                }); })()}
             </div>
             {r?.text && !r.lines && (
               <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="m-0 mt-3 text-center text-sm font-extrabold text-white/80">
@@ -998,6 +1072,7 @@ export default function Game({ gameId, user, profile, refresh }) {
         <div className="mt-3">
           <StatsPanel state={state} me={me} activeSet={activeSet} />
         </div>
+        <TurnOrder state={state} />
         {panelOnTop && panelEl}
         <div className="mt-2">
           <GermanyMap state={state} selectable={selectable} onSelect={(rid) => moveType && send({ type: moveType, region: rid })} target={target} myTarget={['conq-target', 'conq-q', 'ready'].includes(ph) && state.conq ? myTarget : null} revealTargets={reveal} />

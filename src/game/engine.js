@@ -44,6 +44,16 @@ export const DEFEND_BONUS = 100;
 export const BLITZ_CAPITALS = ['W', 'B', 'Y'];
 
 const clone = (s) => JSON.parse(JSON.stringify(s));
+// ordinea pe runde: ultimul din runda trecută devine primul (R1: A B C → R2: C A B → R3: B C A)
+export const rotateRight = (arr, k) => arr.map((_, i) => arr[(((i - k) % arr.length) + arr.length) % arr.length]);
+const shuffled = (n) => {
+  const a = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
 const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 export function createState(host, maxLesson = 12, mode = 'blitz', visibility = 'public') {
@@ -104,7 +114,7 @@ const name = (s, i) => s.players[i]?.name || '?';
 // Ce landuri poate alege jucătorul i acum
 export function validPicks(s, i) {
   const free = freeRegions(s);
-  if (s.phase === 'tie-pick') return free;
+  if (s.phase === 'tie-pick' || s.phase === 'start-pick') return free;
   const adjacent = free.filter((r) => adjacentToMine(s, i, r));
   return adjacent.length ? adjacent : free;
 }
@@ -133,6 +143,7 @@ export function answerers(s) {
 // Cine trebuie să acționeze pe hartă acum
 export function actors(s) {
   if (s.phase === 'expand-pick' || s.phase === 'tie-pick') return [s.picks[0]];
+  if (s.phase === 'start-pick') return [s.conq.order[s.conq.turn]];
   if (s.phase === 'battle-select') return [s.battle.attacker];
   if (s.phase === 'conq-target') return s.conq.order[s.conq.turn] !== undefined ? [s.conq.order[s.conq.turn]] : [];
   return [];
@@ -161,10 +172,13 @@ function startGame(s, now) {
   s.status = 'playing';
   computeScores(s);
   if (s.mode === 'conquest') {
-    s.conq = { round: 0, maxRounds: CONQ_ROUNDS, targets: {}, order: [], turn: 0 };
-    banner(s, 'Eroberungskrieg', 'Alegeți pe rând câte un land — răspunsul corect îl cucerește');
-    log(s, 'Eroberungskrieg! Primul land câștigat devine capitala ta.');
-    startConquestRound(s, now);
+    const base = shuffled(s.players.length);
+    s.turnBase = base;
+    s.conq = { round: 0, maxRounds: CONQ_ROUNDS, targets: {}, order: base, turn: 0 };
+    s.phase = 'start-pick';
+    banner(s, 'Eroberungskrieg', 'Alegeți pe rând capitala — fără întrebare');
+    log(s, 'Eroberungskrieg! Fiecare își alege capitala, apoi încep întrebările.');
+    setTimer(s, PICK_MS, now);
     return;
   }
   s.players.forEach((_, i) => {
@@ -219,8 +233,9 @@ function doExpandPick(s, i, rid, now) {
 
 function startBattle(s, now, rounds = BATTLE_ROUNDS) {
   const n = s.players.length;
+  const base = s.turnBase || s.players.map((_, k) => k);
   const order = [];
-  for (let r = 0; r < rounds; r++) for (let k = 0; k < n; k++) order.push((k + r) % n);
+  for (let r = 0; r < rounds; r++) order.push(...rotateRight(base, r));
   s.battle = { order, turn: 0, attacker: order[0], defender: null, target: null, assault: 0 };
   s.picks = [];
   if (s.mode !== 'conquest') {
@@ -337,14 +352,13 @@ function afterBattleResult(s, now) {
 function startConquestRound(s, now) {
   s.conq.round += 1;
   s.conq.targets = {};
-  const n = s.players.length;
-  s.conq.order = s.players.map((_, k) => (k + s.conq.round - 1) % n); // ordinea se rotește
+  s.conq.order = rotateRight(s.turnBase || s.players.map((_, k) => k), s.conq.round); // R1 = baza rotită o dată față de alegerea capitalelor
   s.conq.turn = 0;
   s.q = null;
   s.answers = {};
   s.result = null;
   s.phase = 'conq-target';
-  if (s.conq.round > 1) banner(s, `Runde ${s.conq.round}`, 'Alegeți pe rând un land liber vecin');
+  banner(s, `Runde ${s.conq.round}`, s.conq.order.map((k) => name(s, k)).join(' → '));
   nextChooser(s, now);
 }
 // sare peste cei care nu mai au ce alege; când toți au ales → întrebarea
@@ -378,6 +392,17 @@ function giveLand(s, i, rid, value = VALUE_SPLIT) {
     makeCapital(s, i, rid);
     s.value[rid] = value;
   }
+}
+
+function doStartPick(s, i, rid, now) {
+  makeCapital(s, i, rid);
+  s.value[rid] = VALUE_SPLIT;
+  event(s, 'capture', rid, i);
+  log(s, `${name(s, i)} și-a ales capitala: ${REGIONS[rid].name}.`);
+  computeScores(s);
+  s.conq.turn++;
+  if (s.conq.turn >= s.conq.order.length) return startConquestRound(s, now);
+  setTimer(s, PICK_MS, now);
 }
 
 function resolveConquest(s, now) {
@@ -524,6 +549,7 @@ export function applyMove(state, userId, move, now = Date.now()) {
     case 'pick': {
       if (!actors(s).includes(i) || !validPicks(s, i).includes(move.region)) return state;
       if (s.phase === 'expand-pick') doExpandPick(s, i, move.region, now);
+      else if (s.phase === 'start-pick') doStartPick(s, i, move.region, now);
       else if (s.phase === 'tie-pick') doTiePick(s, i, move.region, now);
       else return state;
       return s;
@@ -579,6 +605,11 @@ export function tick(state, now = Date.now()) {
     case 'battle-result':
       afterBattleResult(s, now);
       break;
+    case 'start-pick': {
+      const p = s.conq.order[s.conq.turn];
+      doStartPick(s, p, rand(validPicks(s, p)), now);
+      break;
+    }
     case 'conq-target': {
       const p = s.conq.order[s.conq.turn];
       const opts = validConquestTargets(s, p);

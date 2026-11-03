@@ -9,6 +9,7 @@ import { confetti, sfx } from '../lib/fx.js';
 export default function Review({ cards, refresh }) {
   const [mode, setMode] = useState(null); // null | 'due' | 'extra'
   const [result, setResult] = useState(null);
+  const [round, setRound] = useState(0);
   const graded = useRef({});
   const due = useMemo(() => dueCards(cards), [cards]);
   const all = Object.values(cards);
@@ -18,14 +19,28 @@ export default function Review({ cards, refresh }) {
     const list = mode === 'due' ? shuffle(due).slice(0, 30) : shuffle(all).slice(0, 15);
     return list.map((c) => ({ ...reviewExercise(c), card: c }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [mode, round]);
 
   function onStepResult(step, ok) {
     if (!step.card || graded.current[step.card.word_id]) return;
     graded.current[step.card.word_id] = mode === 'due' ? grade(step.card, ok) : ok ? null : grade(step.card, false);
   }
+  // salvează ce s-a repetat până acum (și la ieșirea cu ✕ din mijlocul recapitulării)
+  async function saveProgress() {
+    const updated = Object.values(graded.current).filter(Boolean);
+    graded.current = {};
+    if (updated.length) await api.saveCards(updated);
+    return updated.length;
+  }
+  async function exitEarly() {
+    setMode(null);
+    try {
+      if (await saveProgress()) await refresh();
+    } catch {}
+  }
   async function finish(r) {
     const updated = Object.values(graded.current).filter(Boolean);
+    graded.current = {};
     const xp = r.correct * 2;
     setResult({ ...r, xp });
     sfx.finish();
@@ -39,7 +54,7 @@ export default function Review({ cards, refresh }) {
   }
 
   if (mode && !result && steps.length)
-    return <Runner steps={steps} title={mode === 'due' ? 'Recapitulare' : 'Exersare liberă'} onExit={() => { setMode(null); graded.current = {}; }} onFinish={finish} onStepResult={onStepResult} />;
+    return <Runner steps={steps} title={mode === 'due' ? 'Recapitulare' : 'Exersare liberă'} onExit={exitEarly} onFinish={finish} onStepResult={onStepResult} />;
 
   if (result)
     return (
@@ -52,8 +67,18 @@ export default function Review({ cards, refresh }) {
             <div className={'stat-tile ' + (result.score >= 80 ? 'green' : 'red')}><small>Precizie</small><b>🎯 {result.score}%</b></div>
           </div>
           <p>{result.correct} din {result.total} corecte</p>
-          {result.err && <p className="msg bad">{result.err}</p>}
-          <button className="btn" onClick={() => go('')}>Înapoi acasă</button>
+          {result.err && <p className="msg bad">Nu s-a putut salva: {result.err}</p>}
+          {mode === 'due' && due.length > 0 && !result.err ? (
+            <>
+              <p className="font-bold text-white/70">Mai ai <b className="text-[#f5c443]">{due.length}</b> {due.length === 1 ? 'cuvânt' : 'cuvinte'} de repetat azi.</p>
+              <button className="btn" onClick={() => { setResult(null); setRound((x) => x + 1); }}>
+                Continuă ({Math.min(30, due.length)})
+              </button>
+              <button className="btn ghost" onClick={() => go('')}>Gata pentru azi</button>
+            </>
+          ) : (
+            <button className="btn" onClick={() => go('')}>Înapoi acasă</button>
+          )}
         </div>
       </div>
     );
@@ -70,7 +95,10 @@ export default function Review({ cards, refresh }) {
         <div className="big-num">{due.length}</div>
         <p>{due.length === 1 ? 'cuvânt de repetat azi' : 'cuvinte de repetat azi'}</p>
         {due.length > 0 ? (
-          <button className="btn" onClick={() => setMode('due')}>Începe ({Math.min(30, due.length)})</button>
+          <>
+            <button className="btn" onClick={() => setMode('due')}>Începe ({Math.min(30, due.length)})</button>
+            {due.length > 30 && <p className="muted small">Se repetă în reprize de câte 30 de cuvinte.</p>}
+          </>
         ) : all.length ? (
           <p className="ok-text">✓ Ești la zi!</p>
         ) : (

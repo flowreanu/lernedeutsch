@@ -246,7 +246,7 @@ export default function Home({ profile, progress, cards }) {
           <span className={'grid h-11 w-11 place-items-center rounded-xl text-xl font-black ' + (due ? 'bg-gradient-to-b from-[#ff6b5f] to-[#c42a1f] text-white' : 'bg-white/10 text-[#f5c443]')}>↻</span>
           <span className="flex-1">
             <b className="block">{due ? 'Recapitularea de azi' : 'Exersează liber'}</b>
-            <small className="font-bold text-white/55">{due ? `${due} cuvinte · ~${Math.max(3, Math.round(due * 0.25))} min` : 'Nimic scadent azi ✓'}</small>
+            <small className="font-bold text-white/55">{due ? `${due} cuvinte · ~${Math.max(3, Math.round(due * 0.25))} min${due > 30 ? ` · ${Math.ceil(due / 30)} reprize` : ''}` : 'Nimic scadent azi ✓'}</small>
           </span>
           <span className="rounded-lg bg-[#f5c443] px-3 py-1.5 text-xs font-black tracking-widest text-[#2a1d00]">{due ? 'START' : 'GO'}</span>
         </motion.button>
